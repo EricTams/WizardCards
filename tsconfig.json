@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node", "vite/client", "vitest/globals"],
+    "jsx": "react-jsx",
+
+    /* Strictness — non-negotiable for the engine's correctness guarantees */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+
+    /* Bundler mode — Vite/esbuild own emit; tsc only type-checks */
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Path alias so layers import by name, reinforcing the boundary model */
+    "paths": {
+      "@engine/*": ["./src/engine/*"],
+      "@cards/*": ["./src/cards/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@ui/*": ["./src/ui/*"]
+    }
+  },
+  "include": ["src", "tests", "vite.config.ts"]
+}
