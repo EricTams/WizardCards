@@ -5,9 +5,19 @@ This is the contract that makes the game deterministic, replayable, testable, an
 ## Two tiers, both serializable
 
 - **Intent / Move** — what a player *requests*: "play card #3 on enemy #1". Validated against the rules. (Not yet implemented in the skeleton.)
-- **Atomic action** — the smallest deterministic mutation the engine understands: `DealDamage`, `GainBlock`, `DrawCards`, `StartTurn`, … A validated move expands into an ordered list of these. A card's compiled effects are atomic actions.
+- **Atomic action** — the smallest deterministic mutation the engine understands. A validated move expands into an ordered list of these. A card's compiled effects are atomic actions.
 
-Both are plain objects with a `type` discriminant. See `src/engine/actions/index.ts` for the `Action` union.
+Both are plain objects with a `type` discriminant. See `src/engine/actions/index.ts` for the `Action` union. Today it covers:
+
+- **Cards & turn:** `StartTurn`, `EndTurn`, `ClearBlock`, `DrawCards`, `DiscardCards`.
+- **Combat resources:** `DealDamage` (soaks `block` first, then persistent `shield`, then `hp`), `DealDamageToRandomEnemy` (picks a target via `state.rng`), `DealDamageScaled` (`multiplier × metricValue(state, self, per)` — "equal to your energy", "for each unique cloud"), `GainBlock`, `GainShield`, `Heal` (capped at `maxHp`), `GainEnergy`, `GainPoison`, `GainPower`, `GainBravery`.
+- **Clouds:** `CreateClouds` (type + count), `RemoveClouds`.
+- **Poison keywords:** `Venom` (deal damage = caster's Poison, then zero it) and `Drink` (gain block = Poison, then zero it) — the "equal to your Poison" scaling resolves here, at reduce time, so it stays deterministic.
+- **Minions & persistents:** `SummonMinion` (a copy of a card; instance ids are minted from `GameState.idSeq`), `DiscardMinion`, `AddPersistent`.
+
+Each action emits a matching `GameEvent` (`ShieldGained`, `Healed`, `CloudsCreated`, `MinionSummoned`, …) so the game log can render every effect. Two events carry extra data specifically for triggers: `DamageDealt.unblocked` (the portion past block+shield) and `CloudsRemoved.removed` (which cloud types went away). Adding an action means adding its event and a log rendering.
+
+**Triggers are NOT here.** The reducer stays atomic and trigger-free. The cascade that turns "create a cloud" into a persistent's damage, and the per-turn firing of clouds/minions, is resolved one layer up in `src/cards/match` — see `docs/triggers.md`. That layer composes this reducer with the card DSL; replaying the primary actions still reproduces every triggered effect.
 
 ## The reducer contract
 

@@ -3,19 +3,23 @@
  *
  * The resolver does NOT return actions directly, because an action often needs
  * runtime context that only exists when the card is played (who is the target?
- * which enemy did the player click?). Instead it returns *producers*: pure
+ * which card is this, for a minion copy?). Instead it returns *producers*: pure
  * functions from a PlayContext to the atomic Actions the engine reducer applies.
  *
  * text -> tokens -> AST -> [producers] --(at play time, given context)--> [Action]
  */
-import { type Diagnostic, type Result, ok, err, type EntityId } from '@shared/index';
+import { type Diagnostic, type Result, ok, err, type CardId, type EntityId } from '@shared/index';
 import type { Action } from '@engine/index';
 import type { CardScript, EffectNode } from '@cards/dsl/ast';
 
 /** Everything a producer might need that's only known when the card is played. */
 export interface PlayContext {
+  /** The combatant playing the card (usually the player). */
   readonly self: EntityId;
+  /** The chosen enemy for targeted effects like "deal damage". */
   readonly target: EntityId;
+  /** The card being played — a minion effect summons a copy of it. */
+  readonly sourceCard: CardId;
 }
 
 export type ActionProducer = (ctx: PlayContext) => Action;
@@ -34,17 +38,69 @@ export function resolve(script: CardScript): Result<ActionProducer[], Diagnostic
 }
 
 function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionProducer | null {
+  const amount = effect.amount ?? 0;
   switch (effect.verb) {
     case 'deal':
-      return (ctx) => ({ type: 'DealDamage', target: ctx.target, amount: effect.amount });
+      if (effect.scale) {
+        const per = effect.scale.per;
+        const multiplier = effect.amount ?? 1;
+        return (ctx) => ({ type: 'DealDamageScaled', self: ctx.self, target: ctx.target, per, multiplier });
+      }
+      return (ctx) => ({ type: 'DealDamage', target: ctx.target, amount });
     case 'gain':
-      return (ctx) => ({ type: 'GainBlock', target: ctx.self, amount: effect.amount });
+      return resolveGain(effect, diagnostics);
+    case 'heal':
+      return (ctx) => ({ type: 'Heal', target: ctx.self, amount });
+    case 'poison':
+      return (ctx) => ({ type: 'GainPoison', target: ctx.self, amount });
     case 'draw':
-      return () => ({ type: 'DrawCards', count: effect.amount });
+      return () => ({ type: 'DrawCards', count: amount });
+    case 'create':
+      return (ctx) => ({
+        type: 'CreateClouds',
+        target: ctx.self,
+        cloudType: effect.cloudType!,
+        count: amount,
+      });
+    case 'remove':
+      return (ctx) => ({ type: 'RemoveClouds', target: ctx.self, count: amount });
+    case 'discard':
+      return (ctx) => ({ type: 'DiscardMinion', owner: ctx.self, count: amount });
+    case 'venom':
+      return (ctx) => ({ type: 'Venom', self: ctx.self, target: ctx.target });
+    case 'drink':
+      return (ctx) => ({ type: 'Drink', self: ctx.self });
+    case 'minion':
+      return (ctx) => ({ type: 'SummonMinion', owner: ctx.self, cardId: ctx.sourceCard });
     default:
       diagnostics.push({
         severity: 'error',
         message: `Don't know how to resolve verb "${effect.verb as string}".`,
+        start: effect.start,
+        end: effect.end,
+      });
+      return null;
+  }
+}
+
+/** `gain` fans out to a different action per resource noun. */
+function resolveGain(effect: EffectNode, diagnostics: Diagnostic[]): ActionProducer | null {
+  const amount = effect.amount ?? 0;
+  switch (effect.noun) {
+    case 'block':
+      return (ctx) => ({ type: 'GainBlock', target: ctx.self, amount });
+    case 'shield':
+      return (ctx) => ({ type: 'GainShield', target: ctx.self, amount });
+    case 'energy':
+      return (ctx) => ({ type: 'GainEnergy', target: ctx.self, amount });
+    case 'power':
+      return (ctx) => ({ type: 'GainPower', target: ctx.self, amount });
+    case 'bravery':
+      return (ctx) => ({ type: 'GainBravery', target: ctx.self, amount });
+    default:
+      diagnostics.push({
+        severity: 'error',
+        message: `Don't know how to gain "${String(effect.noun)}".`,
         start: effect.start,
         end: effect.end,
       });

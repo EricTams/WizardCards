@@ -6,7 +6,10 @@
  * CardId; this registry maps ids to their authored definitions.
  */
 import type { CardId } from '@shared/index';
-import { STRIKE, DEFEND, INSIGHT, CLEAVE } from '@cards/definitions/starter';
+import { CLOUD_CARDS } from '@cards/definitions/cloud';
+import { WIZARD_CARDS } from '@cards/definitions/wizard';
+import { CLOUD_PERSISTENTS } from '@cards/definitions/cloud-persistents';
+import { WIZARD_PERSISTENTS } from '@cards/definitions/wizard-persistents';
 
 export interface CardDef {
   readonly id: CardId;
@@ -17,7 +20,18 @@ export interface CardDef {
   readonly text: string;
 }
 
-export const ALL_CARDS: readonly CardDef[] = [STRIKE, DEFEND, INSIGHT, CLEAVE];
+/**
+ * Persistent (ongoing) cards. Kept as a distinct list because they behave
+ * differently — they have no immediate on-play effect; their trigger text drives
+ * behavior while they're in play (see `src/cards/match`).
+ */
+export const PERSISTENT_CARDS: readonly CardDef[] = [...CLOUD_PERSISTENTS, ...WIZARD_PERSISTENTS];
+
+export const ALL_CARDS: readonly CardDef[] = [
+  ...CLOUD_CARDS,
+  ...WIZARD_CARDS,
+  ...PERSISTENT_CARDS,
+];
 
 const BY_ID: ReadonlyMap<CardId, CardDef> = new Map(
   ALL_CARDS.map((card) => [card.id, card]),

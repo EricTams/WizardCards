@@ -15,6 +15,32 @@ export const cardId = (raw: string): CardId => raw as CardId;
 export const entityId = (raw: string): EntityId => raw as EntityId;
 
 /**
+ * The four kinds of cloud the Cloud character creates. Lives in `shared` because
+ * both the engine (cloud state) and the card DSL (the `create clouds` grammar)
+ * refer to it, and shared may depend on nothing.
+ */
+export type CloudType = 'lightning' | 'storm' | 'snow' | 'fog';
+
+/** All cloud types, in a stable order (handy for iteration / UI). */
+export const CLOUD_TYPES: readonly CloudType[] = ['lightning', 'storm', 'snow', 'fog'];
+
+/**
+ * A quantity an effect can scale off of, measured against the caster at reduce
+ * time — "equal to your energy" / "for each unique cloud". Lives in `shared`
+ * because both the engine (computes it) and the DSL (parses it) refer to it.
+ */
+export type ScaleMetric =
+  | 'energy'
+  | 'poison'
+  | 'block'
+  | 'shield'
+  | 'power'
+  | 'bravery'
+  | 'clouds'
+  | 'uniqueClouds'
+  | 'minions';
+
+/**
  * Result — the return type of every fallible pure stage (parser stages, move
  * validation, …). Diagnostics carry source positions so the Card Lab can point
  * at exactly where something went wrong.

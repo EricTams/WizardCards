@@ -4,19 +4,18 @@
  * helpers construct plain state directly (not via atomic actions). They stay pure
  * so they can be unit-tested; playing a card still goes through the engine reducer.
  */
-import { initialState, type Combatant, type GameState } from '@engine/index';
+import { initialState, makeCombatant, type Combatant, type GameState } from '@engine/index';
 import { entityId, type EntityId } from '@shared/index';
 
 const DEFAULT_HP = 30;
 
 function makeTarget(index: number): Combatant {
-  return {
+  return makeCombatant({
     id: entityId(`target-${index}`),
     name: `Target ${index + 1}`,
     hp: DEFAULT_HP,
     maxHp: DEFAULT_HP,
-    block: 0,
-  };
+  });
 }
 
 /** A fresh arena: a full-health player and one target, ready for the player's turn. */

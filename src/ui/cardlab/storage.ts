@@ -5,9 +5,10 @@
  * ui layer — the cards layer stays pure and testable. Failures (private mode,
  * quota, corrupt data) degrade gracefully to the empty overlay.
  */
-import { EMPTY_OVERRIDES, type CardOverrides } from '@cards/index';
+import { EMPTY_OVERRIDES, type CardOverrides, type CardTest } from '@cards/index';
 
 const STORAGE_KEY = 'wizardcards.cardOverrides.v1';
+const TESTS_KEY = 'wizardcards.cardTests.v1';
 
 export function loadOverrides(): CardOverrides {
   try {
@@ -36,5 +37,29 @@ export function clearOverrides(): void {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     // ignore
+  }
+}
+
+/**
+ * Author-defined card tests, persisted separately from the built-in `CARD_TESTS`.
+ * A flat list (each test carries its own `cardId`); the Card Lab filters by card.
+ */
+export function loadUserTests(): CardTest[] {
+  try {
+    const raw = localStorage.getItem(TESTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return parsed as CardTest[];
+  } catch {
+    // fall through to default
+  }
+  return [];
+}
+
+export function saveUserTests(tests: readonly CardTest[]): void {
+  try {
+    localStorage.setItem(TESTS_KEY, JSON.stringify(tests));
+  } catch {
+    // ignore write failures (e.g. private mode / quota)
   }
 }

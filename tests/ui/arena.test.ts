@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { makeArena, addTarget, removeTarget } from '@ui/cardlab/arena';
 import { applyAll } from '@engine/index';
 import { compile } from '@cards/index';
-import { entityId } from '@shared/index';
+import { entityId, cardId } from '@shared/index';
 
 describe('card lab arena', () => {
   it('starts with a player and one target on the player turn', () => {
@@ -34,7 +34,9 @@ describe('card lab arena', () => {
     const compiled = compile('Deal 6 damage.');
     expect(compiled.ok).toBe(true);
     if (!compiled.ok) return;
-    const actions = compiled.value.map((p) => p({ self: arena.player.id, target: target.id }));
+    const actions = compiled.value.map((p) =>
+      p({ self: arena.player.id, target: target.id, sourceCard: cardId('strike') }),
+    );
     const after = applyAll(arena, actions).state;
     expect(after.enemies[0]!.hp).toBe(24);
   });

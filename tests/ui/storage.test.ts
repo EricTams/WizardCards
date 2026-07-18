@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { EMPTY_OVERRIDES, type CardOverrides } from '@cards/index';
-import { loadOverrides, saveOverrides, clearOverrides } from '@ui/cardlab/storage';
+import { EMPTY_OVERRIDES, type CardOverrides, type CardTest } from '@cards/index';
+import {
+  loadOverrides,
+  saveOverrides,
+  clearOverrides,
+  loadUserTests,
+  saveUserTests,
+} from '@ui/cardlab/storage';
 import { cardId } from '@shared/index';
 
 /** Minimal localStorage stub so the ui persistence layer can be tested in Node. */
@@ -44,5 +50,31 @@ describe('card overrides persistence', () => {
     saveOverrides({ version: 1, edited: {}, removed: ['a'] });
     clearOverrides();
     expect(loadOverrides()).toEqual(EMPTY_OVERRIDES);
+  });
+});
+
+describe('user card tests persistence', () => {
+  beforeEach(installLocalStorage);
+
+  it('returns an empty list when nothing is stored', () => {
+    expect(loadUserTests()).toEqual([]);
+  });
+
+  it('round-trips saved card tests', () => {
+    const tests: CardTest[] = [
+      {
+        name: 'Strike deals 6',
+        cardId: cardId('strike'),
+        setup: { target: { hp: 30, maxHp: 30 } },
+        expect: { target: { hp: 24 } },
+      },
+    ];
+    saveUserTests(tests);
+    expect(loadUserTests()).toEqual(tests);
+  });
+
+  it('recovers gracefully from corrupt data', () => {
+    localStorage.setItem('wizardcards.cardTests.v1', 'not json');
+    expect(loadUserTests()).toEqual([]);
   });
 });

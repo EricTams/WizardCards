@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { initialState, apply, type GameState } from '@engine/index';
+import { initialState, apply, makeCombatant, type GameState } from '@engine/index';
 import { entityId, cardId, type CardId } from '@shared/index';
 
 const ENEMY = entityId('enemy');
 
 function withEnemy(state: GameState): GameState {
-  return { ...state, enemies: [{ id: ENEMY, name: 'Dummy', hp: 20, maxHp: 20, block: 0 }] };
+  return {
+    ...state,
+    enemies: [makeCombatant({ id: ENEMY, name: 'Dummy', hp: 20, maxHp: 20 })],
+  };
 }
 
 describe('reducer: apply', () => {
@@ -16,7 +19,7 @@ describe('reducer: apply', () => {
     const enemy = result.state.enemies[0]!;
     expect(enemy.block).toBe(0); // 5 block absorbed
     expect(enemy.hp).toBe(17); // 3 damage through
-    expect(result.events).toContainEqual({ type: 'DamageDealt', target: ENEMY, amount: 8 });
+    expect(result.events).toContainEqual({ type: 'DamageDealt', target: ENEMY, amount: 8, unblocked: 3 });
   });
 
   it('never lets hp go below zero', () => {

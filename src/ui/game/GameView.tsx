@@ -121,11 +121,6 @@ function CombatantCard({
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <strong>{combatant.name}</strong>
-        {combatant.block > 0 && (
-          <span title="block" style={{ color: '#2980b9', fontSize: 13 }}>
-            🛡 {combatant.block}
-          </span>
-        )}
       </div>
       <div style={{ marginTop: 8, height: 10, background: '#eee', borderRadius: 5, overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: accent, transition: 'width 120ms' }} />
@@ -133,6 +128,70 @@ function CombatantCard({
       <div style={{ marginTop: 4, fontSize: 13, color: '#555' }}>
         {combatant.hp} / {combatant.maxHp} HP
       </div>
+      <ResourceChips combatant={combatant} />
     </div>
   );
+}
+
+const CLOUD_ICON: Record<string, string> = {
+  lightning: '⚡',
+  storm: '🌩',
+  snow: '❄️',
+  fog: '🌫',
+};
+
+/** Compact display of a combatant's resources, clouds, minions, and persistents. */
+function ResourceChips({ combatant }: { combatant: Combatant }) {
+  const chips: { label: string; color: string }[] = [];
+  if (combatant.block > 0) chips.push({ label: `🛡 ${combatant.block}`, color: '#2980b9' });
+  if (combatant.shield > 0) chips.push({ label: `🛡🛡 ${combatant.shield}`, color: '#16a085' });
+  if (combatant.energy > 0) chips.push({ label: `⚡e ${combatant.energy}`, color: '#f39c12' });
+  if (combatant.poison > 0) chips.push({ label: `☠ ${combatant.poison}`, color: '#8e44ad' });
+  if (combatant.power > 0) chips.push({ label: `💪 ${combatant.power}`, color: '#c0392b' });
+  if (combatant.bravery > 0) chips.push({ label: `✒ ${combatant.bravery}`, color: '#2c3e50' });
+
+  const cloudCounts = combatant.clouds.reduce<Record<string, number>>((m, c) => {
+    m[c] = (m[c] ?? 0) + 1;
+    return m;
+  }, {});
+
+  if (chips.length === 0 && combatant.clouds.length === 0 && combatant.minions.length === 0 && combatant.persistents.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+      {chips.map((c, i) => (
+        <span key={i} style={chipStyle(c.color)}>
+          {c.label}
+        </span>
+      ))}
+      {Object.entries(cloudCounts).map(([type, n]) => (
+        <span key={type} style={chipStyle('#7f8c8d')} title={`${type} cloud`}>
+          {CLOUD_ICON[type] ?? '☁'} {n}
+        </span>
+      ))}
+      {combatant.minions.length > 0 && (
+        <span style={chipStyle('#27ae60')} title="minions in play">
+          👾 {combatant.minions.length}
+        </span>
+      )}
+      {combatant.persistents.map((id) => (
+        <span key={id} style={chipStyle('#6c5ce7')} title="persistent in play">
+          ∞ {id}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function chipStyle(color: string): React.CSSProperties {
+  return {
+    border: `1px solid ${color}`,
+    color,
+    borderRadius: 4,
+    padding: '1px 5px',
+    fontSize: 12,
+    whiteSpace: 'nowrap',
+  };
 }

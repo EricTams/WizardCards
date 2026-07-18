@@ -9,13 +9,29 @@ import {
   diffCards,
   isEmptyDiff,
   buildReport,
+  runCardTest,
+  snapshotExpect,
+  testsForCard,
+  playCard,
+  startTurn,
+  endTurn,
+  PERSISTENT_CARDS,
   type CardDef,
   type CardOverrides,
+  type CardTest,
+  type CardTestSetup,
+  type CardTestResult,
   type Token,
 } from '@cards/index';
-import { applyAll, type Action, type GameState } from '@engine/index';
+import { applyAll, type Action, type Combatant, type GameState } from '@engine/index';
 import { cardId, type EntityId } from '@shared/index';
-import { loadOverrides, saveOverrides, clearOverrides } from '@ui/cardlab/storage';
+import {
+  loadOverrides,
+  saveOverrides,
+  clearOverrides,
+  loadUserTests,
+  saveUserTests,
+} from '@ui/cardlab/storage';
 import { makeArena, addTarget, removeTarget } from '@ui/cardlab/arena';
 import { GameView } from '@ui/game/GameView';
 
@@ -39,9 +55,16 @@ export function CardLab() {
   const [targetId, setTargetId] = useState<EntityId | null>(null);
   const [lastPlay, setLastPlay] = useState<string>('');
 
+  // Author-defined card tests (built-in ones live in the cards layer).
+  const [userTests, setUserTests] = useState<CardTest[]>(loadUserTests);
+
   useEffect(() => {
     saveOverrides(overrides);
   }, [overrides]);
+
+  useEffect(() => {
+    saveUserTests(userTests);
+  }, [userTests]);
 
   const cards = useMemo(() => applyOverrides(ALL_CARDS, overrides), [overrides]);
   const diff = useMemo(() => diffCards(ALL_CARDS, cards), [cards]);
@@ -60,9 +83,82 @@ export function CardLab() {
     if (!selected || !effectiveTarget) return [];
     const compiled = compile(selected.text);
     if (!compiled.ok) return [];
-    const ctx = { self: arena.player.id, target: effectiveTarget };
+    const ctx = { self: arena.player.id, target: effectiveTarget, sourceCard: cardId(selected.id) };
     return compiled.value.map((produce) => produce(ctx));
   }, [selected, effectiveTarget, arena.player.id]);
+
+  // ---- card tests ------------------------------------------------------------
+  // Tests for the selected card: built-in ones + any the author saved. Each is
+  // run against the *current* (possibly edited) card text via the shared runner.
+  const cardTests = useMemo<CardTest[]>(() => {
+    if (!selected) return [];
+    return [...testsForCard(selected.id), ...userTests.filter((t) => t.cardId === selected.id)];
+  }, [selected, userTests]);
+
+  const testResults = useMemo<{ test: CardTest; result: CardTestResult; builtin: boolean }[]>(() => {
+    if (!selected) return [];
+    const builtinCount = testsForCard(selected.id).length;
+    return cardTests.map((test, i) => ({
+      test,
+      result: runCardTest(selected, test),
+      builtin: i < builtinCount,
+    }));
+  }, [selected, cardTests]);
+
+  /** Snapshot the current arena as a test setup for the runner's single target. */
+  function captureSetup(): CardTestSetup {
+    const enemy = arena.enemies.find((e) => e.id === effectiveTarget) ?? arena.enemies[0];
+    const pick = (c: Combatant): Partial<Combatant> => ({
+      hp: c.hp,
+      maxHp: c.maxHp,
+      block: c.block,
+      shield: c.shield,
+      energy: c.energy,
+      poison: c.poison,
+      power: c.power,
+      bravery: c.bravery,
+      clouds: c.clouds,
+      minions: c.minions,
+    });
+    return {
+      player: pick(arena.player),
+      ...(enemy ? { target: pick(enemy) } : {}),
+      hand: arena.hand,
+      drawPile: arena.drawPile,
+      discardPile: arena.discardPile,
+    };
+  }
+
+  function addTestFromArena() {
+    if (!selected) return;
+    const snap = snapshotExpect(selected, captureSetup());
+    if (!snap.ok) {
+      setLastPlay(`Can't capture test: ${snap.error}`);
+      return;
+    }
+    const n = userTests.filter((t) => t.cardId === selected.id).length + 1;
+    const test: CardTest = {
+      name: `${selected.name} — captured ${n}`,
+      cardId: selected.id,
+      setup: captureSetup(),
+      expect: snap.expect,
+    };
+    setUserTests((prev) => [...prev, test]);
+  }
+
+  function deleteUserTest(target: CardTest) {
+    setUserTests((prev) => prev.filter((t) => t !== target));
+  }
+
+  function exportTests() {
+    const blob = new Blob([JSON.stringify(userTests, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `wizardcards-card-tests-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // ---- card editing ----------------------------------------------------------
   function editSelected(patch: Partial<Pick<CardDef, 'name' | 'cost' | 'text'>>) {
@@ -116,10 +212,27 @@ export function CardLab() {
   }
 
   // ---- play area -------------------------------------------------------------
+  // Card play and turns go through the trigger orchestrator so persistents,
+  // clouds, and minions actually fire (not just the card's own atomic actions).
   function playSelected() {
-    if (previewActions.length === 0) return;
-    setArena((a) => applyAll(a, previewActions).state);
-    setLastPlay(previewActions.map((x) => x.type).join(' → '));
+    if (!selected || !effectiveTarget) return;
+    const ctx = { self: arena.player.id, target: effectiveTarget, sourceCard: cardId(selected.id) };
+    const result = playCard(arena, selected, ctx);
+    setArena(result.state);
+    setLastPlay(result.events.map((e) => e.type).join(' → ') || '(no effect)');
+  }
+  function doStartTurn() {
+    const result = startTurn(arena);
+    setArena(result.state);
+    setLastPlay(`Start turn → ${result.events.map((e) => e.type).join(' → ') || '(nothing)'}`);
+  }
+  function doEndTurn() {
+    const result = endTurn(arena);
+    setArena(result.state);
+    setLastPlay(`End turn → ${result.events.map((e) => e.type).join(' → ') || '(nothing)'}`);
+  }
+  function addPersistent(id: string) {
+    setArena((a) => applyAll(a, [{ type: 'AddPersistent', target: a.player.id, cardId: cardId(id) }]).state);
   }
   function removeTgt(id: EntityId) {
     setArena((a) => removeTarget(a, id));
@@ -229,12 +342,49 @@ export function CardLab() {
               </button>
             </div>
 
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={doStartTurn} style={btn('#2980b9', true)} title="Fire clouds, replay minions, run start-of-turn persistents, draw">
+                ⏱ Start turn
+              </button>
+              <button onClick={doEndTurn} style={btn('#2980b9', true)} title="Fog discard + end-of-turn effects">
+                ⏹ End turn
+              </button>
+            </div>
+
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span style={labelStyle}>Add a persistent to the player</span>
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) addPersistent(e.target.value);
+                }}
+                style={inputStyle}
+              >
+                <option value="">— choose a persistent —</option>
+                {PERSISTENT_CARDS.map((p) => (
+                  <option key={p.id} value={p.id} title={p.text}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             {lastPlay && (
-              <div style={{ fontSize: 12, color: '#888' }}>Last play: {lastPlay}</div>
+              <div style={{ fontSize: 12, color: '#888', wordBreak: 'break-word' }}>Last: {lastPlay}</div>
             )}
             <p style={{ fontSize: 12, color: '#aaa', margin: 0 }}>
-              Click a target to aim at it. "Deal" hits the selected target; "Gain" applies to the player.
+              "Play card" and the turn buttons run through the trigger system, so clouds, minions, and
+              persistents fire. Watch the resource chips on the combatants.
             </p>
+
+            <TestPanel
+              results={testResults}
+              hasCard={!!selected}
+              userTestCount={userTests.length}
+              onCapture={addTestFromArena}
+              onDelete={deleteUserTest}
+              onExport={exportTests}
+            />
           </div>
 
           <section style={{ border: '1px solid #ddd', borderRadius: 8, padding: 16 }}>
@@ -249,6 +399,94 @@ export function CardLab() {
         </div>
       )}
     </main>
+  );
+}
+
+function TestPanel({
+  results,
+  hasCard,
+  userTestCount,
+  onCapture,
+  onDelete,
+  onExport,
+}: {
+  results: { test: CardTest; result: CardTestResult; builtin: boolean }[];
+  hasCard: boolean;
+  userTestCount: number;
+  onCapture: () => void;
+  onDelete: (test: CardTest) => void;
+  onExport: () => void;
+}) {
+  const passing = results.filter((r) => r.result.ok).length;
+  const allPass = results.length > 0 && passing === results.length;
+
+  return (
+    <section style={{ borderTop: '1px solid #eee', paddingTop: 12, display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <strong style={{ fontSize: 13 }}>Tests</strong>
+        {results.length > 0 && (
+          <span style={{ fontSize: 12, color: allPass ? '#27ae60' : '#c0392b' }}>
+            {passing}/{results.length} passing
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <button onClick={onExport} disabled={userTestCount === 0} style={btn('#6c5ce7', true)}>
+          Export
+        </button>
+      </div>
+
+      <button onClick={onCapture} disabled={!hasCard} style={btn('#27ae60', true)}>
+        + Capture test from arena
+      </button>
+
+      {results.length === 0 ? (
+        <p style={{ fontSize: 12, color: '#aaa', margin: 0 }}>
+          No tests for this card yet. Configure the arena (HP, resources, targets, then aim) and capture
+          the current play as an expected result.
+        </p>
+      ) : (
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 4 }}>
+          {results.map(({ test, result, builtin }, i) => (
+            <li
+              key={i}
+              style={{
+                border: '1px solid #eee',
+                borderLeft: `3px solid ${result.ok ? '#27ae60' : '#c0392b'}`,
+                borderRadius: 4,
+                padding: '6px 8px',
+                fontSize: 12,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: result.ok ? '#27ae60' : '#c0392b' }}>{result.ok ? '✓' : '✗'}</span>
+                <span style={{ flex: 1 }}>{test.name}</span>
+                {builtin ? (
+                  <span style={{ color: '#aaa' }} title="built-in test">
+                    built-in
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => onDelete(test)}
+                    title="Delete test"
+                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#999' }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              {!result.ok && (
+                <div style={{ color: '#c0392b', marginTop: 4 }}>
+                  {result.error ??
+                    result.failures
+                      .map((f) => `${f.field}: expected ${f.expected}, got ${f.actual}`)
+                      .join('; ')}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -391,7 +629,17 @@ function CardEditor({
 
       <Panel title="Parse">
         {parsed.ok ? (
-          <pre style={{ margin: 0 }}>{JSON.stringify(parsed.value.effects, null, 2)}</pre>
+          <pre style={{ margin: 0 }}>
+            {JSON.stringify(
+              {
+                effects: parsed.value.effects,
+                ...(parsed.value.triggers.length > 0 ? { triggers: parsed.value.triggers } : {}),
+                ...(parsed.value.modifiers.length > 0 ? { modifiers: parsed.value.modifiers } : {}),
+              },
+              null,
+              2,
+            )}
+          </pre>
         ) : (
           <ul style={{ margin: 0, color: '#c0392b' }}>
             {parsed.errors.map((d, i) => (

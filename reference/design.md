@@ -1,3 +1,30 @@
+<!--
+Editor's notes (added while reconciling this design with the project docs — the rulebook below is unchanged).
+
+This document is the source of truth for *what the game is*. The docs in `docs/` describe *how it's built*;
+the implementation is still an early skeleton and does not yet match this design (see `docs/roadmap.md`).
+
+Decisions locked in:
+- Title is "Weather & Wanderers"; "WizardCards" remains the repo/codebase name.
+- Scope is self-contained battles — pick a character, draft a deck, pick 1 relic, fight one opponent,
+  ~10 turns, no meta-progression (no map / rewards / run structure).
+- Deck model: each character has a ~40-card pool (the card tables below); you play a 20-card deck drawn from it.
+
+Rules clarifications (decided; also in `docs/vision.md`):
+- Energy: start each turn with 1 energy; cards cost 1 by default (baseline = one card/turn; energy cards
+  let you play more).
+- Enemies play like players — opponents run the same card system, not scripted intents.
+- No turn limit; "~10 turns" is just a typical match length. Running out of cards reshuffles the discard
+  (no deckout loss). You win by taking the opponent to 0 HP.
+- No cloud-slot cap currently, so "Increase Max Clouds" cards are no-ops until a cap exists.
+- The 3 offered relics are drawn from both the general pool and the character's pool.
+
+- Opening hand: draw 5, discard 2, so you begin turn 1 holding 3 cards. Hand max is 10.
+
+Known engine work (not open questions): Block (temporary) and Shield (persistent) must become two distinct
+resources — today the engine has only a single `block`.
+-->
+
 # Weather \& Wanderers — Card Game Rulebook
 
 A deck-building combat game where each character builds around a distinct mechanic. Choose a character, draft a deck, pick a relic, and battle your opponents.

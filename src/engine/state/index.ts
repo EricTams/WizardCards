@@ -6,20 +6,74 @@
  * `JSON.stringify` must round-trip it losslessly. This is what lets us snapshot,
  * send over the wire, and diff state for free.
  *
- * This is placeholder shape for the walking skeleton — enough to demonstrate the
- * pattern. Real combat/entity modeling comes later.
+ * The combat model is still growing toward `reference/design.md`. Today a
+ * Combatant carries the per-character resources the Cloud and Wizard cards need
+ * (clouds, poison, energy, shields, minions, …); turn structure, energy economy,
+ * and the trigger system that makes clouds/minions *act* are still to come (see
+ * `docs/roadmap.md`).
  */
-import type { CardId, EntityId } from '@shared/index';
+import type { CardId, CloudType, EntityId } from '@shared/index';
 import { seedRng, type RngState } from '@engine/rng/index';
 
 export type Phase = 'setup' | 'playerTurn' | 'enemyTurn' | 'won' | 'lost';
+
+/** A summoned minion in play. References the card it was summoned from. */
+export interface MinionState {
+  /** Unique instance id, minted deterministically from `GameState.idSeq`. */
+  readonly id: EntityId;
+  /** The card this minion is a copy of (its effects replay while in play). */
+  readonly cardId: CardId;
+}
 
 export interface Combatant {
   readonly id: EntityId;
   readonly name: string;
   readonly hp: number;
   readonly maxHp: number;
+  /** Temporary damage soak. Design: cleared each turn (turn structure is later). */
   readonly block: number;
+  /** Persistent damage soak. Design: stays until spent. */
+  readonly shield: number;
+  /** Spare energy/mana this combatant has to play more cards. */
+  readonly energy: number;
+  /** The Wizard's stored X-value; Venom/Drink spend it. */
+  readonly poison: number;
+  /** The Old Lady's damage buff (modelled here so any combatant can carry it). */
+  readonly power: number;
+  /** The Writer's block/damage burst charge. */
+  readonly bravery: number;
+  /** Cloud tokens in play (the Cloud's mechanic). */
+  readonly clouds: readonly CloudType[];
+  /** Minions in play (the Wizard's mechanic). */
+  readonly minions: readonly MinionState[];
+  /**
+   * Persistent (ongoing) cards this combatant has in play. Their trigger
+   * behavior is resolved by the turn/trigger orchestration in the cards layer
+   * (`src/cards/match`), not by the engine reducer.
+   */
+  readonly persistents: readonly CardId[];
+}
+
+/**
+ * Build a Combatant, filling every resource with its zero value. Callers give
+ * the identity/health fields (and may override any resource); this keeps the
+ * many construction sites from having to spell out every field as the model grows.
+ */
+export function makeCombatant(
+  props: Pick<Combatant, 'id' | 'name' | 'hp' | 'maxHp'> & Partial<Combatant>,
+): Combatant {
+  return {
+    block: 0,
+    shield: 0,
+    energy: 0,
+    poison: 0,
+    power: 0,
+    bravery: 0,
+    clouds: [],
+    minions: [],
+    persistents: [],
+    ...props,
+  };
 }
 
 export interface GameState {
@@ -27,6 +81,8 @@ export interface GameState {
   readonly version: 1;
   /** The RNG cursor. Advancing randomness means producing a new state with a new value here. */
   readonly rng: RngState;
+  /** Monotonic counter for minting deterministic instance ids (minions, …). */
+  readonly idSeq: number;
   readonly phase: Phase;
   readonly turn: number;
   readonly player: Combatant;
@@ -48,15 +104,15 @@ export function initialState(opts: NewGameOptions): GameState {
   return {
     version: 1,
     rng: seedRng(opts.seed),
+    idSeq: 0,
     phase: 'setup',
     turn: 0,
-    player: {
+    player: makeCombatant({
       id: 'player' as EntityId,
       name: 'Wizard',
       hp: 50,
       maxHp: 50,
-      block: 0,
-    },
+    }),
     enemies: [],
     drawPile: opts.deck.slice(),
     hand: [],

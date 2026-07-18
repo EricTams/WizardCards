@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { ALL_CARDS, compile } from '@cards/index';
-import { initialState, apply, type GameState } from '@engine/index';
+import { initialState, apply, makeCombatant, type GameState } from '@engine/index';
 import { entityId } from '@shared/index';
 
 /**
  * The "every card" guarantee: this suite is data-driven over the registry, so a
- * newly added card is automatically tested. As cards gain edge cases, add
- * per-card expectation fixtures here rather than one-off test files.
+ * newly added card is automatically tested. Behavioural expectations live as
+ * declarative CardTests (see tests/cards/card-tests.test.ts); this suite just
+ * proves every card compiles and its actions apply without throwing.
  */
 const SELF = entityId('player');
 const TARGET = entityId('enemy');
@@ -14,7 +15,7 @@ const TARGET = entityId('enemy');
 function sandbox(): GameState {
   return {
     ...initialState({ seed: 'test', deck: [] }),
-    enemies: [{ id: TARGET, name: 'Dummy', hp: 50, maxHp: 50, block: 0 }],
+    enemies: [makeCombatant({ id: TARGET, name: 'Dummy', hp: 50, maxHp: 50 })],
   };
 }
 
@@ -29,7 +30,7 @@ describe('every card in the registry', () => {
       // Each producer yields a real Action, and applying them never throws.
       let state = sandbox();
       for (const produce of compiled.value) {
-        const action = produce({ self: SELF, target: TARGET });
+        const action = produce({ self: SELF, target: TARGET, sourceCard: card.id });
         expect(action.type).toBeTypeOf('string');
         state = apply(state, action).state;
       }

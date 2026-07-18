@@ -19,7 +19,7 @@ Tests live in `tests/` mirroring `src/` (`tests/engine`, `tests/cards`, `tests/d
 
 ## Adding edge-case coverage for a card
 
-Prefer expectation **fixtures** over bespoke test files: for a card, assert the exact resulting state after playing it against a known sandbox (e.g. Strike vs. a 20-hp dummy with 5 block leaves it at 17 hp / 0 block). As the DSL grows, add negative fixtures (malformed text → expected diagnostics with spans).
+Prefer declarative **CardTests** over bespoke test files: for a card, assert the exact resulting state after playing it against a known sandbox (e.g. Shine — Deal 6 — vs. a 30-hp dummy with 2 block and 1 shield leaves it at 27 hp / 0 block / 0 shield). These live as serializable specs in `src/cards/card-tests.ts`, run by `tests/cards/card-tests.test.ts`, and are authorable in the Card Lab — see `docs/card-testing.md`. As the DSL grows, add negative fixtures (malformed text → expected diagnostics with spans).
 
 ## Property-based testing (fast-check)
 
