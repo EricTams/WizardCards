@@ -70,10 +70,23 @@ function outcomeAction(state: GameState): Action | null {
   return null;
 }
 
+/** Discard `count` cards chosen at random from `owner`'s hand (deterministic via RNG). */
+function discardRandom(state: GameState, owner: EntityId, count: number): GameState {
+  let s = state;
+  for (let i = 0; i < count; i++) {
+    const c = combatantOf(s, owner);
+    if (!c || c.hand.length === 0) break;
+    const draw = nextInt(s.rng, 0, c.hand.length - 1);
+    s = runWithTriggers({ ...s, rng: draw.state }, [{ type: 'MoveHandCardToDiscard', owner, index: draw.value }]).state;
+  }
+  return s;
+}
+
 /**
  * Set up a fresh battle: both sides get a shuffled deck and an opening hand of 5,
- * relic combat-start effects fire, and we pause in the `mulligan` phase for the
- * player to discard 2 (see `confirmMulligan`).
+ * relic combat-start effects fire. The enemy immediately mulligans (discards 2 at
+ * random, as its AI has no choice to make); we pause in the `mulligan` phase for
+ * the player to discard 2 (see `confirmMulligan`). Both sides open on 3 cards.
  */
 export function newBattle(opts: BattleOptions): GameState {
   const base = initialState({ seed: opts.seed, deck: [] });
@@ -118,6 +131,7 @@ export function newBattle(opts: BattleOptions): GameState {
 
   state = runWithTriggers(state, [{ type: 'DrawCards', owner: player.id, count: OPENING_HAND }]).state;
   state = runWithTriggers(state, [{ type: 'DrawCards', owner: enemy.id, count: OPENING_HAND }]).state;
+  state = discardRandom(state, enemy.id, OPENING_DISCARD); // the enemy's mulligan
   return { ...state, phase: 'mulligan' };
 }
 

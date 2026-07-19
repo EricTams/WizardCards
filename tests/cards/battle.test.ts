@@ -12,6 +12,7 @@ import {
   PLAYER_ID,
   ENEMY_ID,
   OPENING_HAND,
+  OPENING_DISCARD,
   DECK_SIZE,
   type BattleOptions,
 } from '@cards/index';
@@ -22,11 +23,12 @@ import { SHINE, CRISSCROSS, RAIN } from '@cards/definitions/cloud';
 const OPTS: BattleOptions = { character: 'cloud', relicId: 'old-shield', seed: 'battle-1' };
 
 describe('battle setup', () => {
-  it('deals both sides an opening hand and pauses for the mulligan', () => {
+  it('deals both sides an opening hand; the enemy mulligans to 3, the player awaits input', () => {
     const s = newBattle(OPTS);
     expect(s.phase).toBe('mulligan');
-    expect(s.player.hand).toHaveLength(OPENING_HAND);
-    expect(s.enemies[0]!.hand).toHaveLength(OPENING_HAND);
+    expect(s.player.hand).toHaveLength(OPENING_HAND); // player still holds 5; discards in confirmMulligan
+    expect(s.enemies[0]!.hand).toHaveLength(OPENING_HAND - OPENING_DISCARD); // enemy already dropped 2
+    expect(s.enemies[0]!.discardPile).toHaveLength(OPENING_DISCARD);
     // 20-card deck, minus the 5 drawn, live in the draw pile.
     expect(s.player.drawPile).toHaveLength(DECK_SIZE - OPENING_HAND);
   });
@@ -154,8 +156,11 @@ describe('AI vs AI (Attract Mode)', () => {
     const s = newBattle({ character: 'wizard', relicId: '', seed: 'm', enemyCharacter: 'cloud' });
     expect(s.player.character).toBe('wizard');
     expect(s.enemies[0]!.character).toBe('cloud');
-    expect(s.player.drawPile.length + s.player.hand.length).toBe(DECK_SIZE);
-    expect(s.enemies[0]!.drawPile.length + s.enemies[0]!.hand.length).toBe(DECK_SIZE);
+    // Every card is accounted for across the piles (the enemy's 2 mulligan
+    // discards live in its discard pile).
+    const total = (c: Combatant) => c.drawPile.length + c.hand.length + c.discardPile.length;
+    expect(total(s.player)).toBe(DECK_SIZE);
+    expect(total(s.enemies[0]!)).toBe(DECK_SIZE);
   });
 
   // Headless version of the UI's attract conductor (no delays).

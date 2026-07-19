@@ -359,6 +359,9 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
       {/* Combat log — how each play resolved, top-left */}
       <CombatLog entries={logEntries} />
 
+      {/* Opponent's hidden hand — a fan of card backs, top-center (mirrors yours) */}
+      {enemy && <OpponentHand count={enemy.hand.length} emblem={enemy.character === 'wizard' ? '🔮' : '☁'} />}
+
       {/* Enemy — top right */}
       {enemy && (
         <div style={{ position: 'absolute', top: '16%', right: '6%', textAlign: 'center' }}>
@@ -367,7 +370,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
             <CloudRow clouds={enemy.clouds} />
             <HeroUnit c={enemy} flip />
           </div>
-          <div style={{ ...tinyNote, marginTop: 4 }}>{enemy.hand.length} cards · {enemy.drawPile.length} deck</div>
+          <div style={{ ...tinyNote, marginTop: 4 }}>{enemy.drawPile.length} in deck</div>
         </div>
       )}
 
@@ -500,6 +503,74 @@ function CombatLog({ entries }: { entries: readonly LogEntry[] }) {
           ))}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** A single face-down card — a "fake" back used for the opponent's hidden hand. */
+function CardBack({ w = 50, emblem = '✦' }: { w?: number; emblem?: string }) {
+  const h = w * 1.5;
+  return (
+    <div
+      style={{
+        width: w,
+        height: h,
+        borderRadius: 6,
+        border: '2px solid #0e1119',
+        background: 'repeating-linear-gradient(45deg, #3a4a8c 0 6px, #2c3a70 6px 12px)',
+        boxShadow: '0 3px 8px rgba(0,0,0,.4)',
+        position: 'relative',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: 4,
+          border: '1px solid rgba(255,255,255,.28)',
+          borderRadius: 4,
+          display: 'grid',
+          placeItems: 'center',
+        }}
+      >
+        <span style={{ fontSize: w * 0.5, opacity: 0.85 }}>{emblem}</span>
+      </div>
+    </div>
+  );
+}
+
+/** The opponent's hand as a fan of face-down card backs (top-center, hanging down). */
+function OpponentHand({ count, emblem }: { count: number; emblem: string }) {
+  const shown = Math.min(Math.max(0, count), 10);
+  if (shown === 0) return null;
+  const mid = (shown - 1) / 2;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 40,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        alignItems: 'flex-start',
+        zIndex: 3,
+      }}
+      title={`${count} cards in hand`}
+    >
+      {Array.from({ length: shown }, (_, i) => {
+        const off = i - mid;
+        return (
+          <div
+            key={i}
+            style={{
+              marginLeft: i === 0 ? 0 : -18,
+              transform: `translateY(${Math.abs(off) * 2.5}px) rotate(${off * 4}deg)`,
+              transformOrigin: 'top center',
+            }}
+          >
+            <CardBack emblem={emblem} />
+          </div>
+        );
+      })}
     </div>
   );
 }
