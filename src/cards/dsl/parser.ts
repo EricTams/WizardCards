@@ -173,7 +173,7 @@ function parseCondition(clause: Token[], diagnostics: Diagnostic[]): TriggerCond
 }
 
 const RESOURCE_WORDS = new Set([
-  'energy', 'block', 'shield', 'shields', 'poison', 'power', 'bravery', 'hp', 'health', 'hearts',
+  'energy', 'block', 'shield', 'shields', 'defense', 'poison', 'power', 'bravery', 'hp', 'health', 'hearts',
 ]);
 
 function normalizeResource(word: string): string {
@@ -235,7 +235,7 @@ function parseEffectStatement(clause: Token[], diagnostics: Diagnostic[]): Effec
   return effect;
 }
 
-const SCALE_RESOURCES = new Set<ScaleMetric>(['energy', 'poison', 'block', 'shield', 'power', 'bravery']);
+const SCALE_RESOURCES = new Set<ScaleMetric>(['energy', 'poison', 'block', 'shield', 'defense', 'power', 'bravery']);
 
 /** Parse "Deal damage equal to your X" and "Deal N damage for each [unique] Y". */
 function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode | null {
@@ -246,7 +246,7 @@ function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode 
   if (words.includes('equal')) {
     const resource = words.map((w) => singular(w)).find((w) => SCALE_RESOURCES.has(w as ScaleMetric));
     if (!resource) {
-      diagnostics.push(diag('"equal to your …" needs a resource (energy, poison, block, shield, power, bravery).', head));
+      diagnostics.push(diag('"equal to your …" needs a resource (energy, poison, block, shield, defense, power, bravery).', head));
       return null;
     }
     return { kind: 'Effect', verb: 'deal', noun: 'damage', scale: { per: resource as ScaleMetric }, ...span };

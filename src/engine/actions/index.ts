@@ -159,6 +159,13 @@ export interface RemoveClouds {
   readonly count: number;
 }
 
+/** Remove the single cloud at `index` (how the cloud-cap replacement picks one). */
+export interface RemoveCloudAt {
+  readonly type: 'RemoveCloudAt';
+  readonly target: EntityId;
+  readonly index: number;
+}
+
 /**
  * Venom: deal damage equal to the caster's Poison to `target`, then set the
  * caster's Poison to 0. The "equal to your Poison" scaling is resolved here, at
@@ -213,6 +220,7 @@ export type Action =
   | GainBravery
   | CreateClouds
   | RemoveClouds
+  | RemoveCloudAt
   | Venom
   | Drink
   | SummonMinion

@@ -158,7 +158,7 @@ export const HURL: CardDef = {
   id: cardId('wizard-hurl'),
   name: 'Hurl',
   cost: 1,
-  text: 'Discard 2 minions. Deal damage equal to your block.',
+  text: 'Discard 2 minions. Deal damage equal to your defense.',
 };
 
 /** Every Wizard card in this batch, in table order. */

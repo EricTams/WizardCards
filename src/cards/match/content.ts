@@ -18,6 +18,8 @@ export const BASE_ENERGY = 1;
 export const BASE_MAX_HP = 20;
 /** Cards in a starting deck (design: "a deck of 20 random cards"). */
 export const DECK_SIZE = 20;
+/** Most clouds a combatant may hold; creating more replaces existing ones. */
+export const CLOUD_CAP = 3;
 
 export interface CharacterDef {
   readonly id: CharacterId;

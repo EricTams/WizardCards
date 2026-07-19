@@ -16,7 +16,7 @@ Rules clarifications (decided; also in `docs/vision.md`):
 - Enemies play like players — opponents run the same card system, not scripted intents.
 - No turn limit; "~10 turns" is just a typical match length. Running out of cards reshuffles the discard
   (no deckout loss). You win by taking the opponent to 0 HP.
-- No cloud-slot cap currently, so "Increase Max Clouds" cards are no-ops until a cap exists.
+- Cloud cap is 3: creating more clouds than that replaces existing ones (the player picks which to drop, one at a time; the AI drops its oldest). "Increase Max Clouds" cards would raise this cap (not yet wired to those cards).
 - The 3 offered relics are drawn from both the general pool and the character's pool.
 
 - Opening hand: draw 5, discard 2, so you begin turn 1 holding 3 cards. Hand max is 10.

@@ -91,7 +91,7 @@ A `deal` can scale off the caster's state instead of a fixed number. Two forms, 
 | `Deal 3 damage for each unique cloud.`    | `{ verb:'deal', amount:3, scale:{ per:'uniqueClouds' } }` | `3 × unique clouds` |
 | `Deal 1 damage for each minion.`          | `{ verb:'deal', amount:1, scale:{ per:'minions' } }`   | `1 × minions`       |
 
-Metrics (`ScaleMetric` in `shared`): resources `energy`/`poison`/`block`/`shield`/`power`/`bravery`, and counts `clouds`/`uniqueClouds`/`minions`. Like Venom/Drink, **scaling resolves in the reducer**: the resolver emits a `DealDamageScaled` action and `metricValue(state, self, per)` computes the amount at apply time (so ordering within a card is respected). Scaling is `deal`-only for now — using it on another verb is a diagnostic, not a silent miss.
+Metrics (`ScaleMetric` in `shared`): resources `energy`/`poison`/`block`/`shield`/`defense`/`power`/`bravery`, and counts `clouds`/`uniqueClouds`/`minions`. `defense` is **block + shield** combined (e.g. Hurl's "Deal damage equal to your defense"). Like Venom/Drink, **scaling resolves in the reducer**: the resolver emits a `DealDamageScaled` action and `metricValue(state, self, per)` computes the amount at apply time (so ordering within a card is respected). Scaling is `deal`-only for now — using it on another verb is a diagnostic, not a silent miss.
 
 ## Adding a verb / keyword
 

@@ -54,4 +54,4 @@ The **Card Lab Play test** routes card play and the Start/End-turn buttons throu
 
 ## Not yet built
 
-Minion *damage-soak* (a minion takes a hit in your place) and *"replayed N extra times"* persistents; end-of-turn cloud churn (Wild Wind, Windmill — gated on a cloud-slot cap that doesn't exist yet); more trigger events (on-draw, on-block, on-gain) and richer conditions; and enemy turns / a real turn structure (Phase 2).
+*"replayed N extra times"* persistents; end-of-turn cloud churn (Wild Wind, Windmill); more trigger events (on-draw, on-block, on-gain) and richer conditions. (Minion *damage-soak* — a minion takes a hit in your place — and the cloud cap of 3 are now implemented; see `docs/battle.md`.)

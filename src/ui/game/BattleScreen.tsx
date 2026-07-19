@@ -9,13 +9,15 @@ import {
   aiPlayOne,
   beginPlayerTurn,
   getCard,
+  applyWithTriggers,
   CHARACTERS,
   OPENING_DISCARD,
+  CLOUD_CAP,
   PLAYER_ID,
   ENEMY_ID,
   type BattleOptions,
 } from '@cards/index';
-import type { Combatant, GameEvent, GameState } from '@engine/index';
+import type { Combatant, GameEvent, GameState, MinionState } from '@engine/index';
 import type { CardId, CloudType, EntityId } from '@shared/index';
 import { Sprite } from '@ui/game/Sprite';
 import { heroSprite, cloudSprite, cardArtUrl, CARD_ART_W, CARD_ART_H, SPRITE_CSS } from '@ui/game/art';
@@ -106,6 +108,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   const [flyers, setFlyers] = useState<Flyer[]>([]);
   const [pops, setPops] = useState<Pop[]>([]);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const [targeting, setTargeting] = useState<number | null>(null); // hand index awaiting a target pick
   const fxId = useRef(0);
   const animating = staged !== null;
 
@@ -275,6 +278,15 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   const enemy = state.enemies[0];
   const isPlayerTurn = !auto && state.phase === 'playerTurn' && !enemyActing && !animating;
   const decided = state.phase === 'won' || state.phase === 'lost';
+  // Over the cloud cap: the player must replace clouds (one at a time) before
+  // doing anything else.
+  const overCap = isPlayerTurn && targeting === null && player.clouds.length > CLOUD_CAP;
+
+  function removeCloudAt(index: number) {
+    const r = applyWithTriggers(state, { type: 'RemoveCloudAt', target: PLAYER_ID, index });
+    setState(r.state);
+    setLog(r.state.player.clouds.length > CLOUD_CAP ? 'Replace another cloud…' : 'Clouds set.');
+  }
 
   const bg = THEME_BG[character.theme] ?? THEME_BG.field;
 
@@ -289,15 +301,30 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     setLog('Turn 1 — play a card.');
     logTurn(r.state, `— ${r.state.player.name}'s turn —`, r.events, 'player');
   }
-  async function playCardAt(index: number) {
-    if (!isPlayerTurn || !enemy) return;
+  function playCardAt(index: number) {
+    if (!isPlayerTurn || overCap || !enemy) return;
     const cardId = player.hand[index]!;
     const card = getCard(cardId);
     if (!card || player.energy < card.cost) {
       setLog(`Not enough energy for ${card?.name ?? 'that'}.`);
       return;
     }
-    const r = playFromHand(state, PLAYER_ID, index, ENEMY_ID);
+    // If the card attacks and the enemy has minions (decoys), let the player pick
+    // which to hit; otherwise just aim at the enemy hero.
+    if (enemy.minions.length > 0 && /\bdeal\b|venom/i.test(card.text)) {
+      setTargeting(index);
+      setLog(`Choose a target for ${card.name}.`);
+      return;
+    }
+    void resolvePlay(index, ENEMY_ID);
+  }
+  async function resolvePlay(index: number, targetId: EntityId) {
+    if (!isPlayerTurn) return;
+    const cardId = player.hand[index]!;
+    const card = getCard(cardId);
+    if (!card) return;
+    const r = playFromHand(state, PLAYER_ID, index, targetId);
+    setTargeting(null);
     setPlayingIndex(index); // hide the played card in hand while it's staged
     setLog(`You play ${card.name}.`);
     await animateAndApply(PLAYER_ID, cardId, r.events, r.state, () => setPlayingIndex(null));
@@ -391,8 +418,24 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
         <div style={{ position: 'absolute', top: '16%', right: '6%', textAlign: 'center' }}>
           <CombatantBadges c={enemy} align="right" />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'flex-end', marginTop: 6 }}>
+            <MinionRow
+              minions={enemy.minions}
+              onHover={hoverCard}
+              onLeave={hideTip}
+              targetable={targeting !== null}
+              onTarget={(id) => targeting !== null && void resolvePlay(targeting, id)}
+            />
             <CloudRow clouds={enemy.clouds} onHover={hoverCloud} onLeave={hideTip} />
-            <HeroUnit c={enemy} flip />
+            <div
+              onClick={targeting !== null ? () => void resolvePlay(targeting, ENEMY_ID) : undefined}
+              style={{
+                cursor: targeting !== null ? 'crosshair' : 'default',
+                outline: targeting !== null ? '3px solid #f2c14a' : 'none',
+                borderRadius: 10,
+              }}
+            >
+              <HeroUnit c={enemy} flip />
+            </div>
           </div>
           <div style={{ ...tinyNote, marginTop: 4 }}>{enemy.drawPile.length} in deck</div>
         </div>
@@ -403,28 +446,30 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
         <CombatantBadges c={player} align="left" />
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginTop: 6 }}>
           <HeroUnit c={player} />
-          <CloudRow clouds={player.clouds} onHover={hoverCloud} onLeave={hideTip} />
-          {player.minions.length > 0 && (
-            <div style={{ display: 'flex', gap: 4 }}>
-              {player.minions.map((m) => (
-                <div
-                  key={m.id}
-                  style={{ ...minionBox, cursor: 'help' }}
-                  onMouseEnter={(e) => hoverCard(m.cardId, e.currentTarget)}
-                  onMouseLeave={hideTip}
-                >
-                  M
-                </div>
-              ))}
-            </div>
-          )}
+          <CloudRow
+            clouds={player.clouds}
+            onHover={hoverCloud}
+            onLeave={hideTip}
+            removable={overCap}
+            onRemove={removeCloudAt}
+          />
+          <MinionRow minions={player.minions} onHover={hoverCard} onLeave={hideTip} />
         </div>
       </div>
 
-      {/* Energy indicator near the player */}
+      {/* Energy indicator near the player. During the opening (before the turn
+          formally starts) preview the energy you'll begin turn 1 with, including
+          each Lightning cloud's +1 — otherwise a Lightning-Rod cloud shows no
+          benefit until you commit the mulligan. */}
       {!decided && (
         <div style={{ position: 'absolute', left: '6%', bottom: 196, display: 'flex', gap: 6, alignItems: 'center' }}>
-          <EnergyPips energy={player.energy} />
+          <EnergyPips
+            energy={
+              state.phase === 'mulligan'
+                ? player.energy + player.clouds.filter((c) => c === 'lightning').length
+                : player.energy
+            }
+          />
         </div>
       )}
 
@@ -451,7 +496,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
             </button>
           </>
         )}
-        {isPlayerTurn && (
+        {isPlayerTurn && !overCap && targeting === null && (
           <button onClick={doEndTurn} style={bigBtn(true)}>
             End turn ▶
           </button>
@@ -460,6 +505,43 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
 
       {/* Play animations: staged card, projectiles, floating numbers */}
       <EffectsLayer staged={staged} flyers={flyers} pops={pops} />
+
+      {/* Cloud-cap prompt: choose which clouds to replace, one at a time */}
+      {overCap && (
+        <div
+          style={{
+            position: 'absolute',
+            left: '6%',
+            bottom: 360,
+            zIndex: 9,
+          }}
+        >
+          <span style={{ ...pill, background: 'rgba(0,0,0,.72)' }}>
+            ☁ Cloud limit is {CLOUD_CAP} — click a cloud to replace ({player.clouds.length - CLOUD_CAP} over)
+          </span>
+        </div>
+      )}
+
+      {/* Targeting prompt (only when the enemy has minions to pick between) */}
+      {targeting !== null && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '44%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            gap: 10,
+            alignItems: 'center',
+            zIndex: 9,
+          }}
+        >
+          <span style={{ ...pill, background: 'rgba(0,0,0,.7)' }}>🎯 Click a target (hero or a minion)</span>
+          <button onClick={() => setTargeting(null)} style={{ ...hudBtn, background: 'rgba(0,0,0,.6)' }}>
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Hover tooltip: card/minion/cloud text + keyword glossary */}
       {tip && (
@@ -622,14 +704,55 @@ function OpponentHand({ count, emblem }: { count: number; emblem: string }) {
   );
 }
 
+/** A row of minion tokens — hoverable (tooltip) and, when `targetable`, clickable. */
+function MinionRow({
+  minions,
+  onHover,
+  onLeave,
+  targetable = false,
+  onTarget,
+}: {
+  minions: readonly MinionState[];
+  onHover: (cardId: CardId, el: HTMLElement) => void;
+  onLeave: () => void;
+  targetable?: boolean;
+  onTarget?: (id: EntityId) => void;
+}) {
+  if (minions.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {minions.map((m) => (
+        <div
+          key={m.id}
+          style={{
+            ...minionBox,
+            cursor: targetable ? 'crosshair' : 'help',
+            outline: targetable ? '3px solid #f2c14a' : 'none',
+            boxShadow: targetable ? '0 0 10px #f2c14a' : minionBox.boxShadow,
+          }}
+          onMouseEnter={(e) => onHover(m.cardId, e.currentTarget)}
+          onMouseLeave={onLeave}
+          onClick={targetable && onTarget ? () => onTarget(m.id) : undefined}
+        >
+          M
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CloudRow({
   clouds,
   onHover,
   onLeave,
+  removable = false,
+  onRemove,
 }: {
   clouds: readonly CloudType[];
   onHover?: (type: CloudType, el: HTMLElement) => void;
   onLeave?: () => void;
+  removable?: boolean;
+  onRemove?: (index: number) => void;
 }) {
   if (clouds.length === 0) return null;
   return (
@@ -637,9 +760,15 @@ function CloudRow({
       {clouds.map((t, i) => (
         <div
           key={i}
-          style={{ animation: `bob 2.4s ease-in-out ${i * 0.2}s infinite`, cursor: 'help' }}
+          style={{
+            animation: `bob 2.4s ease-in-out ${i * 0.2}s infinite`,
+            cursor: removable ? 'crosshair' : 'help',
+            outline: removable ? '3px solid #f2c14a' : 'none',
+            borderRadius: 6,
+          }}
           onMouseEnter={onHover ? (e) => onHover(t, e.currentTarget) : undefined}
           onMouseLeave={onLeave}
+          onClick={removable && onRemove ? () => onRemove(i) : undefined}
         >
           <Sprite sprite={cloudSprite(t)} scale={1.4} />
         </div>

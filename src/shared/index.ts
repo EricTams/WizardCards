@@ -41,6 +41,8 @@ export type ScaleMetric =
   | 'poison'
   | 'block'
   | 'shield'
+  /** Block + Shield combined — your total defensive armor. */
+  | 'defense'
   | 'power'
   | 'bravery'
   | 'clouds'

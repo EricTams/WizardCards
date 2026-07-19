@@ -27,7 +27,7 @@ import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
 import type { PlayContext } from '@cards/dsl/resolver';
 import { runWithTriggers, runTurnCascade, startTurn, endTurn, type RunResult } from '@cards/match/index';
-import { BASE_ENERGY, BASE_MAX_HP, DECK_SIZE, CHARACTERS, enemyDeck, getRelic } from '@cards/match/content';
+import { BASE_ENERGY, BASE_MAX_HP, DECK_SIZE, CLOUD_CAP, CHARACTERS, enemyDeck, getRelic } from '@cards/match/content';
 
 export const OPENING_HAND = 5;
 export const OPENING_DISCARD = 2;
@@ -202,6 +202,25 @@ function settleAfter(r: RunResult): RunResult {
   return { state: s.state, events: [...r.events, ...s.events] };
 }
 
+/**
+ * Enforce the cloud cap for an AI actor: while it holds more than CLOUD_CAP
+ * clouds, drop the oldest (so freshly-created clouds "replace" older ones). The
+ * human does this interactively; the AI just keeps the newest.
+ */
+export function capClouds(state: GameState, ownerId: EntityId): RunResult {
+  let s = state;
+  const events: GameEvent[] = [];
+  let c = combatantOf(s, ownerId);
+  let guard = 0;
+  while (c && c.clouds.length > CLOUD_CAP && guard++ < 20) {
+    const r = runWithTriggers(s, [{ type: 'RemoveCloudAt', target: ownerId, index: 0 }]);
+    s = r.state;
+    events.push(...r.events);
+    c = combatantOf(s, ownerId);
+  }
+  return { state: s, events };
+}
+
 /** Hand indices a combatant may legally play right now (in hand + affordable). */
 function validPlays(actor: Combatant): number[] {
   const idxs: number[] = [];
@@ -238,9 +257,21 @@ export function aiPlayOne(state: GameState, actorId: EntityId): EnemyPlay | null
   const draw = nextInt(state.rng, 0, valid.length - 1);
   const index = valid[draw.value]!;
   const cardId = actor.hand[index]!;
-  // playFromHand defaults the target to the actor's first opponent.
-  const played = settleAfter(playFromHand({ ...state, rng: draw.state }, actorId, index));
-  return { state: played.state, events: played.events, cardId };
+  // Choose a target at random among the opponent's hero and its minions — a
+  // minion soaks the whole attack (and dies), so spreading fire makes minions
+  // matter. Only affects the card's damage; self-buffs still hit the caster.
+  const opp = opponentsOf(state, actorId).find((o) => o.hp > 0);
+  let rng = draw.state;
+  let target = opp?.id ?? actorId;
+  if (opp && opp.minions.length > 0) {
+    const candidates: EntityId[] = [opp.id, ...opp.minions.map((m) => m.id)];
+    const pick = nextInt(rng, 0, candidates.length - 1);
+    rng = pick.state;
+    target = candidates[pick.value]!;
+  }
+  const played = settleAfter(playFromHand({ ...state, rng }, actorId, index, target));
+  const capped = capClouds(played.state, actorId); // AI keeps at most CLOUD_CAP clouds
+  return { state: capped.state, events: [...played.events, ...capped.events], cardId };
 }
 
 // ---- The enemy turn, decomposed so the UI can pace it -----------------------

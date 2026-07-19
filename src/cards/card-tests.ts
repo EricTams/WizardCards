@@ -155,13 +155,13 @@ export const CARD_TESTS: readonly CardTest[] = [
     expect: { target: { hp: 28 } }, // 1 × 2 minions
   },
   {
-    name: 'Hurl discards 2 minions then deals damage equal to your block',
+    name: 'Hurl discards 2 minions then deals damage equal to your defense (block + shield)',
     cardId: HURL.id,
     setup: {
-      player: { block: 5, minions: [dummyMinion(ALCHEMY.id), dummyMinion(ALCHEMY.id)] },
+      player: { block: 5, shield: 2, minions: [dummyMinion(ALCHEMY.id), dummyMinion(ALCHEMY.id)] },
       target: { hp: 30, maxHp: 30 },
     },
-    expect: { target: { hp: 25 }, player: { minions: 0 } },
+    expect: { target: { hp: 23 }, player: { minions: 0 } }, // 5 block + 2 shield = 7 damage
   },
   {
     name: 'Throw deals 8 and discards a minion',

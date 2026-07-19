@@ -46,7 +46,7 @@ Reconciling `reference/design.md` against the engine settled these:
 - **Energy** — you start each turn with **1 energy** and cards **cost 1 by default**, so a baseline turn plays one card; energy-granting cards and effects let you play more.
 - **Enemies play like players** — opponents are characters running the same card system, not scripted intents. This is what makes a future versus multiplayer mode straightforward.
 - **No turn limit** — "~10 turns" is just a typical match length, not a cap. Running out of cards reshuffles the discard into the draw pile (as the engine already does, and per the *Brain in a Jar* relic), so there's no deckout loss. You win by taking the opponent to 0 HP.
-- **No cloud-slot cap currently** — the Cloud has no maximum number of clouds for now, so "Increase Max Clouds" cards are effectively no-ops until a cap is introduced.
+- **Cloud cap is 3** — creating clouds past 3 replaces existing ones (the player chooses which to drop one at a time; the AI auto-drops its oldest). "Increase Max Clouds" cards would raise the cap once wired up.
 - **Relic offer** — the 3 relics you choose from are drawn from **both** the general pool and your character's pool.
 
 Done since these were written: **Block** (temporary) and **Shield** (persistent) are now two separate resources on `Combatant` (damage soaks block → shield → hp), and the "opponents play like players" decision is realized — the enemy draws and plays real cards through the same reducer in the battle loop (`docs/battle.md`).

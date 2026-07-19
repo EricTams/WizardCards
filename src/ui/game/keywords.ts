@@ -22,6 +22,11 @@ export const GLOSSARY: readonly KeywordDef[] = [
     match: ['shield'],
   },
   {
+    term: 'Defense',
+    description: 'Your Block + Shield combined — some cards scale off your total defense.',
+    match: ['defense'],
+  },
+  {
     term: 'Heal',
     description: 'Restore HP, up to your maximum.',
     match: ['heal'],

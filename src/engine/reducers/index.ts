@@ -155,6 +155,9 @@ export function apply(state: GameState, action: Action): ApplyResult {
     case 'RemoveClouds':
       return removeClouds(state, action.target, action.count);
 
+    case 'RemoveCloudAt':
+      return removeCloudAt(state, action.target, action.index);
+
     case 'Venom':
       return venom(state, action.self, action.target);
 
@@ -218,6 +221,8 @@ export function metricValue(state: GameState, id: EntityId, metric: ScaleMetric)
       return c.block;
     case 'shield':
       return c.shield;
+    case 'defense':
+      return c.block + c.shield;
     case 'power':
       return c.power;
     case 'bravery':
@@ -263,8 +268,27 @@ function drawCards(state: GameState, owner: EntityId, count: number): ApplyResul
   };
 }
 
-/** Damage soaks block first, then shield, then hits hp. */
+/** The combatant that owns the minion with this id, if `id` is a minion. */
+function minionOwner(state: GameState, id: EntityId): EntityId | undefined {
+  const all = [state.player, ...state.enemies];
+  const owner = all.find((c) => c.minions.some((m) => m.id === id));
+  return owner?.id;
+}
+
+/**
+ * Damage soaks block first, then shield, then hits hp. If the target is a MINION,
+ * the minion soaks the whole attack and is discarded (the Wizard's decoy rule),
+ * emitting MinionDiscarded so triggers like Consuming fire.
+ */
 function dealDamage(state: GameState, target: EntityId, amount: number): ApplyResult {
+  const owner = minionOwner(state, target);
+  if (owner) {
+    return {
+      state: mapCombatant(state, owner, (c) => ({ ...c, minions: c.minions.filter((m) => m.id !== target) })),
+      events: [{ type: 'MinionDiscarded', owner, count: 1 }],
+    };
+  }
+
   const current = findCombatant(state, target);
   const fromBlock = Math.min(current?.block ?? 0, amount);
   const fromShield = Math.min(current?.shield ?? 0, amount - fromBlock);
@@ -343,6 +367,18 @@ function removeClouds(state: GameState, target: EntityId, count: number): ApplyR
   return {
     state: mapCombatant(state, target, (c) => ({ ...c, clouds: c.clouds.slice(0, keep) })),
     events: [{ type: 'CloudsRemoved', target, count: removed.length, removed }],
+  };
+}
+
+function removeCloudAt(state: GameState, target: EntityId, index: number): ApplyResult {
+  const current = findCombatant(state, target);
+  if (!current || index < 0 || index >= current.clouds.length) {
+    return { state, events: [{ type: 'CloudsRemoved', target, count: 0, removed: [] }] };
+  }
+  const removed = [current.clouds[index]!];
+  return {
+    state: mapCombatant(state, target, (c) => ({ ...c, clouds: c.clouds.filter((_, i) => i !== index) })),
+    events: [{ type: 'CloudsRemoved', target, count: 1, removed }],
   };
 }
 

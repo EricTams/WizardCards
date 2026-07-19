@@ -158,6 +158,8 @@ function playerResource(state: GameState, resource: string): number {
       return p.block;
     case 'shield':
       return p.shield;
+    case 'defense':
+      return p.block + p.shield;
     case 'poison':
       return p.poison;
     case 'power':

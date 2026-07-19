@@ -103,6 +103,10 @@ export function impactsFromEvents(events: readonly GameEvent[], actorId: EntityI
       case 'MinionSummoned':
         out.push(mk('minion', 'self', 'summon', { fly: false }));
         break;
+      case 'MinionDiscarded':
+        // An attack (or effect) destroyed a minion — a hit on that side.
+        if (e.count) out.push(mk('damage', e.owner === actorId ? 'self' : 'opp', '💥'));
+        break;
       case 'CardsDrawn':
         if (e.cards.length) out.push(mk('draw', 'self', `draw ${e.cards.length}`, { fly: false }));
         break;

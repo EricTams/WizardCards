@@ -14,11 +14,12 @@ import {
   OPENING_HAND,
   OPENING_DISCARD,
   DECK_SIZE,
+  CLOUD_CAP,
   type BattleOptions,
 } from '@cards/index';
-import { initialState, makeCombatant, type Combatant, type GameState } from '@engine/index';
-import type { EntityId } from '@shared/index';
-import { SHINE, CRISSCROSS, RAIN } from '@cards/definitions/cloud';
+import { apply, initialState, makeCombatant, type Combatant, type GameState } from '@engine/index';
+import { cardId, entityId, type EntityId } from '@shared/index';
+import { SHINE, CRISSCROSS, RAIN, HURRICANE } from '@cards/definitions/cloud';
 
 const OPTS: BattleOptions = { character: 'cloud', relicId: 'old-shield', seed: 'battle-1' };
 
@@ -141,6 +142,61 @@ describe('battle determinism', () => {
     const b = run();
     expect(a).toEqual(b);
     expect(JSON.parse(JSON.stringify(a))).toEqual(a);
+  });
+});
+
+describe('minions as attack targets', () => {
+  const M = entityId('m1');
+  const withMinion = (): GameState => {
+    const base = initialState({ seed: 'mt', deck: [] });
+    return {
+      ...base,
+      phase: 'playerTurn',
+      turn: 1,
+      player: makeCombatant({ id: PLAYER_ID, name: 'P', hp: 20, maxHp: 20, minions: [{ id: M, cardId: cardId('x') }] }),
+      enemies: [makeCombatant({ id: ENEMY_ID, name: 'E', hp: 20, maxHp: 20 })],
+    };
+  };
+
+  it('an attack targeting a minion discards it and spares the hero', () => {
+    const r = apply(withMinion(), { type: 'DealDamage', target: M, amount: 6 });
+    expect(r.state.player.minions).toHaveLength(0);
+    expect(r.state.player.hp).toBe(20); // hero untouched
+    expect(r.events.some((e) => e.type === 'MinionDiscarded')).toBe(true);
+  });
+
+  it('the AI spreads fire between the hero and minions', () => {
+    // Enemy holds an attack; the player (defender) has one minion.
+    const base: GameState = {
+      ...withMinion(),
+      phase: 'enemyTurn',
+      enemies: [makeCombatant({ id: ENEMY_ID, name: 'E', hp: 20, maxHp: 20, energy: 1, hand: [SHINE.id] })],
+    };
+    let killedMinion = 0;
+    let hitHero = 0;
+    for (let i = 0; i < 24; i++) {
+      const r = aiPlayOne({ ...base, rng: 5 + i * 211 }, ENEMY_ID);
+      if (!r) continue;
+      if (r.state.player.minions.length === 0) killedMinion++;
+      else if (r.state.player.hp < 20) hitHero++;
+    }
+    expect(killedMinion).toBeGreaterThan(0); // sometimes the minion soaks it
+    expect(hitHero).toBeGreaterThan(0); // sometimes the hero takes it
+  });
+});
+
+describe('cloud cap', () => {
+  it('the AI never holds more than CLOUD_CAP clouds', () => {
+    // Enemy already at the cap plays a card that creates 2 more → trims back down.
+    const s: GameState = {
+      ...craft({ hp: 20 }, { energy: 1, hand: [HURRICANE.id], clouds: ['storm', 'snow', 'fog'], drawPile: [] }),
+      phase: 'enemyTurn',
+    };
+    const r = aiPlayOne(s, ENEMY_ID);
+    expect(r).not.toBeNull();
+    expect(r!.state.enemies[0]!.clouds.length).toBe(CLOUD_CAP);
+    // it keeps the freshly-created clouds (drops the oldest)
+    expect(r!.state.enemies[0]!.clouds).toContain('storm');
   });
 });
 
