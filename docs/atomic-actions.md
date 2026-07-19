@@ -9,13 +9,19 @@ This is the contract that makes the game deterministic, replayable, testable, an
 
 Both are plain objects with a `type` discriminant. See `src/engine/actions/index.ts` for the `Action` union. Today it covers:
 
-- **Cards & turn:** `StartTurn`, `EndTurn`, `ClearBlock`, `DrawCards`, `DiscardCards`.
-- **Combat resources:** `DealDamage` (soaks `block` first, then persistent `shield`, then `hp`), `DealDamageToRandomEnemy` (picks a target via `state.rng`), `DealDamageScaled` (`multiplier × metricValue(state, self, per)` — "equal to your energy", "for each unique cloud"), `GainBlock`, `GainShield`, `Heal` (capped at `maxHp`), `GainEnergy`, `GainPoison`, `GainPower`, `GainBravery`.
+- **Cards & turn:** `StartTurn`, `EndTurn`, `SetPhase` (drive the phase directly — used for `mulligan`/`won`/`lost`), `ClearBlock`, `DrawCards`, `DiscardCards`, `MoveHandCardToDiscard` (move a specific hand card, by index — how playing a card leaves the hand).
+- **Combat resources:** `DealDamage` (soaks `block` first, then persistent `shield`, then `hp`), `DealDamageToRandomEnemy` (a random living *opponent* of `self` via `state.rng`), `DealDamageScaled` (`multiplier × metricValue(state, self, per)` — "equal to your energy", "for each unique cloud"), `GainBlock`, `GainShield`, `Heal` (capped at `maxHp`), `GainEnergy`, `SetEnergy` (set to an exact value — the per-turn reset to base), `GainPoison`, `GainPower`, `GainBravery`.
 - **Clouds:** `CreateClouds` (type + count), `RemoveClouds`.
 - **Poison keywords:** `Venom` (deal damage = caster's Poison, then zero it) and `Drink` (gain block = Poison, then zero it) — the "equal to your Poison" scaling resolves here, at reduce time, so it stays deterministic.
 - **Minions & persistents:** `SummonMinion` (a copy of a card; instance ids are minted from `GameState.idSeq`), `DiscardMinion`, `AddPersistent`.
 
-Each action emits a matching `GameEvent` (`ShieldGained`, `Healed`, `CloudsCreated`, `MinionSummoned`, …) so the game log can render every effect. Two events carry extra data specifically for triggers: `DamageDealt.unblocked` (the portion past block+shield) and `CloudsRemoved.removed` (which cloud types went away). Adding an action means adding its event and a log rendering.
+### Ownership: who does the action act on?
+
+`GameState` holds the player and the enemies, and **each combatant carries its own card piles** (`drawPile`/`hand`/`discardPile`/`exhaustPile` live on `Combatant`, not on `GameState`). This is what lets the enemy draw and play cards through the exact same reducer as the player — the symmetric, multiplayer-ready shape the design wants.
+
+So pile/perspective actions take an owner: `DrawCards`, `DiscardCards`, and `MoveHandCardToDiscard` carry an optional `owner` (defaults to the player), and `DealDamageToRandomEnemy` carries an optional `self` whose *opponents* it targets (`opponentsOf(state, self)` — the enemies if `self` is the player, else the player). The card DSL threads `ctx.self` into these so a card an enemy plays draws from the enemy's deck and hits the enemy's opponents.
+
+Each action emits a matching `GameEvent` (`ShieldGained`, `Healed`, `CloudsCreated`, `MinionSummoned`, `PhaseChanged`, `EnergySet`, …) so the game log can render every effect. `CardsDrawn`/`CardsDiscarded`/`DeckReshuffled` carry the `owner` they happened to. Two events carry extra data specifically for triggers: `DamageDealt.unblocked` (the portion past block+shield) and `CloudsRemoved.removed` (which cloud types went away). Adding an action means adding its event and a log rendering.
 
 **Triggers are NOT here.** The reducer stays atomic and trigger-free. The cascade that turns "create a cloud" into a persistent's damage, and the per-turn firing of clouds/minions, is resolved one layer up in `src/cards/match` — see `docs/triggers.md`. That layer composes this reducer with the card DSL; replaying the primary actions still reproduces every triggered effect.
 
@@ -39,9 +45,9 @@ state = applyAll(initialState(seed), actionLog).state
 
 `apply` returns `events` (e.g. `DamageDealt`, `CardsDrawn`, `DeckReshuffled`) describing *what happened*. State is the truth the UI renders; events drive transient concerns like animations and the game log. **The UI reads state and reacts to events; it never writes either.**
 
-### Requirement: the game log
+### The game log (implemented)
 
-The game has a **game log** (a.k.a. combat log): a human-readable, chronological record of everything that happens in a run. It is a required, first-class feature.
+The game has a **game log** (a.k.a. combat log): a human-readable, chronological record of everything that happens in a run. It is a required, first-class feature — **now built** in the battle view (`src/ui/game/combatLog.ts` formats events; `BattleScreen`'s `CombatLog` panel renders a titled block per card play / turn with its effect lines beneath). It reads the `events` returned by each driver step and never inspects state.
 
 - **Source of truth is the `events` stream, not state.** The log is built by formatting `GameEvent`s as they are emitted by the reducer — it must never be produced by diffing or inspecting `GameState`. This keeps the log accurate for effects that don't leave a lasting state trace and reinforces the event-sourcing model.
 - **Deterministic & replayable.** Because events derive from `applyAll(initialState(seed), actionLog)`, the same seed + action log reproduces the identical log. The log is therefore reconstructable from the action log alone (no separate persistence needed).

@@ -13,7 +13,16 @@
  * (`state.rng`). Replaying the primary actions reproduces every triggered effect,
  * so the action log stays the source of truth.
  */
-import { apply, type Action, type GameEvent, type GameState, type MinionState } from '@engine/index';
+import {
+  apply,
+  opponentsOf,
+  type Action,
+  type Combatant,
+  type GameEvent,
+  type GameState,
+  type MinionState,
+} from '@engine/index';
+import type { EntityId } from '@shared/index';
 import type { PlayContext } from '@cards/dsl/resolver';
 import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
@@ -71,24 +80,34 @@ export function playCard(state: GameState, card: CardDef, ctx: PlayContext): Run
   return runWithTriggers(state, compiled.value.map((produce) => produce(ctx)));
 }
 
-/** The ordered cloud triggers for the player's current clouds. */
-export function cloudEffects(state: GameState): Action[] {
-  const self = state.player.id;
-  const snowBonus = activePersistents(state).reduce((n, p) => n + (p.snowHealBonus ?? 0), 0);
+/** Find any combatant (player or an enemy) by id. */
+function combatantOf(state: GameState, id: EntityId): Combatant | undefined {
+  return state.player.id === id ? state.player : state.enemies.find((e) => e.id === id);
+}
+
+/** The ordered cloud triggers for `actor`'s current clouds (defaults to the player). */
+export function cloudEffects(state: GameState, actorId: EntityId = state.player.id): Action[] {
+  const actor = combatantOf(state, actorId);
+  if (!actor) return [];
+  // Persistents (Winter's snow bonus) are the player's; the enemy has none today.
+  const snowBonus =
+    actorId === state.player.id
+      ? activePersistents(state).reduce((n, p) => n + (p.snowHealBonus ?? 0), 0)
+      : 0;
   const actions: Action[] = [];
-  for (const cloud of state.player.clouds) {
+  for (const cloud of actor.clouds) {
     switch (cloud) {
       case 'lightning':
-        actions.push({ type: 'GainEnergy', target: self, amount: 1 });
+        actions.push({ type: 'GainEnergy', target: actorId, amount: 1 });
         break;
       case 'snow':
-        actions.push({ type: 'Heal', target: self, amount: 1 + snowBonus });
+        actions.push({ type: 'Heal', target: actorId, amount: 1 + snowBonus });
         break;
       case 'storm':
-        actions.push({ type: 'DealDamageToRandomEnemy', amount: 1 });
+        actions.push({ type: 'DealDamageToRandomEnemy', self: actorId, amount: 1 });
         break;
       case 'fog':
-        actions.push({ type: 'DrawCards', count: 1 });
+        actions.push({ type: 'DrawCards', owner: actorId, count: 1 });
         break;
     }
   }
@@ -96,25 +115,33 @@ export function cloudEffects(state: GameState): Action[] {
 }
 
 /** A minion's on-play effects, minus summoning itself again. */
-function minionReplayActions(state: GameState, minion: MinionState): Action[] {
+function minionReplayActions(state: GameState, actorId: EntityId, minion: MinionState): Action[] {
   const card = getCard(minion.cardId);
   if (!card) return [];
   const compiled = compile(card.text);
   if (!compiled.ok) return [];
   const ctx: PlayContext = {
-    self: state.player.id,
-    target: state.enemies[0]?.id ?? state.player.id,
+    self: actorId,
+    target: opponentsOf(state, actorId)[0]?.id ?? actorId,
     sourceCard: minion.cardId,
   };
   return compiled.value.map((produce) => produce(ctx)).filter((a) => a.type !== 'SummonMinion');
 }
 
 /**
- * Start the player's turn: advance the counter, clear temporary block, fire every
- * cloud, run start-of-turn persistents, replay minions, then draw. Each step
- * resolves its own triggers before the next runs.
+ * The shared start-of-turn cascade for ANY actor: clear temporary block, reset
+ * energy to base (if asked), fire every one of that actor's clouds, run the
+ * player's start-of-turn persistents, replay that actor's minions, then draw.
+ * Does NOT touch `phase` or the turn counter — callers own those — so it works
+ * for both the player (`startTurn`) and the enemy (`beginEnemyTurn`), which is
+ * what makes a real card-playing Cloud opponent fire its clouds like the player.
  */
-export function startTurn(state: GameState, opts: { draw?: number } = {}): RunResult {
+export function runTurnCascade(
+  state: GameState,
+  actorId: EntityId,
+  opts: { resetEnergyTo?: number; draw?: number } = {},
+): RunResult {
+  const isPlayer = actorId === state.player.id;
   let current = state;
   const events: GameEvent[] = [];
   const run = (actions: readonly Action[]) => {
@@ -123,16 +150,39 @@ export function startTurn(state: GameState, opts: { draw?: number } = {}): RunRe
     events.push(...result.events);
   };
 
-  run([{ type: 'StartTurn' }]);
-  run([{ type: 'ClearBlock', target: current.player.id }]);
-  run(cloudEffects(current));
-  run(activePersistents(current).flatMap((p) => (p.onStartTurn ? p.onStartTurn(current) : [])));
-  for (const minion of current.player.minions.slice()) run(minionReplayActions(current, minion));
+  run([{ type: 'ClearBlock', target: actorId }]);
+  // Design: you start each turn with a base energy (usually 1); Lightning clouds
+  // then add on top. Reset happens before clouds so "start with >3 energy" checks
+  // (Summer) see the post-Lightning total.
+  if (opts.resetEnergyTo !== undefined) run([{ type: 'SetEnergy', target: actorId, amount: opts.resetEnergyTo }]);
+  run(cloudEffects(current, actorId));
+  // Persistents are modelled as the player's (`activePersistents` reads the player).
+  if (isPlayer) run(activePersistents(current).flatMap((p) => (p.onStartTurn ? p.onStartTurn(current) : [])));
+  const actor = combatantOf(current, actorId);
+  if (actor) for (const minion of actor.minions.slice()) run(minionReplayActions(current, actorId, minion));
 
-  const draw = opts.draw ?? 1;
-  if (draw > 0) run([{ type: 'DrawCards', count: draw }]);
+  const draw = opts.draw ?? 0;
+  if (draw > 0) run([{ type: 'DrawCards', owner: actorId, count: draw }]);
 
   return { state: current, events };
+}
+
+/**
+ * Start the player's turn: advance the counter + phase (the `StartTurn` action),
+ * then run the shared cascade (clear block, energy, clouds, persistents, minions,
+ * draw 1 by default).
+ */
+export function startTurn(
+  state: GameState,
+  opts: { draw?: number; actorId?: EntityId; resetEnergyTo?: number } = {},
+): RunResult {
+  const actorId = opts.actorId ?? state.player.id;
+  const started = runWithTriggers(state, [{ type: 'StartTurn' }]);
+  const cascade = runTurnCascade(started.state, actorId, {
+    ...(opts.resetEnergyTo !== undefined ? { resetEnergyTo: opts.resetEnergyTo } : {}),
+    draw: opts.draw ?? 1,
+  });
+  return { state: cascade.state, events: [...started.events, ...cascade.events] };
 }
 
 /**
@@ -140,7 +190,9 @@ export function startTurn(state: GameState, opts: { draw?: number } = {}): RunRe
  * (unless Autumn suppresses it), then the turn ends. (Enemy turns / full turn
  * structure are Phase 2.)
  */
-export function endTurn(state: GameState): RunResult {
+export function endTurn(state: GameState, opts: { actorId?: EntityId } = {}): RunResult {
+  const actorId = opts.actorId ?? state.player.id;
+  const isPlayer = actorId === state.player.id;
   let current = state;
   const events: GameEvent[] = [];
   const run = (actions: readonly Action[]) => {
@@ -149,11 +201,12 @@ export function endTurn(state: GameState): RunResult {
     events.push(...result.events);
   };
 
-  run(activePersistents(current).flatMap((b) => (b.onEndTurn ? b.onEndTurn(current) : [])));
+  if (isPlayer) run(activePersistents(current).flatMap((b) => (b.onEndTurn ? b.onEndTurn(current) : [])));
 
-  const autumn = activePersistents(current).some((b) => b.suppressFogDiscard);
-  const fog = current.player.clouds.filter((c) => c === 'fog').length;
-  if (!autumn && fog > 0) run([{ type: 'DiscardCards', count: fog }]);
+  const autumn = isPlayer && activePersistents(current).some((b) => b.suppressFogDiscard);
+  const actor = combatantOf(current, actorId);
+  const fog = actor ? actor.clouds.filter((c) => c === 'fog').length : 0;
+  if (!autumn && fog > 0) run([{ type: 'DiscardCards', owner: actorId, count: fog }]);
 
   run([{ type: 'EndTurn' }]);
   return { state: current, events };

@@ -54,7 +54,7 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
     case 'poison':
       return (ctx) => ({ type: 'GainPoison', target: ctx.self, amount });
     case 'draw':
-      return () => ({ type: 'DrawCards', count: amount });
+      return (ctx) => ({ type: 'DrawCards', owner: ctx.self, count: amount });
     case 'create':
       return (ctx) => ({
         type: 'CreateClouds',

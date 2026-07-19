@@ -92,6 +92,9 @@ export function buildTestState(setup: CardTestSetup = {}): GameState {
     maxHp: 50,
     ...setup.player,
     id: TEST_SELF,
+    drawPile: setup.drawPile?.slice() ?? setup.player?.drawPile?.slice() ?? [],
+    hand: setup.hand?.slice() ?? setup.player?.hand?.slice() ?? [],
+    discardPile: setup.discardPile?.slice() ?? setup.player?.discardPile?.slice() ?? [],
   });
   const target = makeCombatant({
     name: 'Target',
@@ -105,9 +108,6 @@ export function buildTestState(setup: CardTestSetup = {}): GameState {
     phase: 'playerTurn',
     player,
     enemies: [target],
-    drawPile: setup.drawPile?.slice() ?? [],
-    hand: setup.hand?.slice() ?? [],
-    discardPile: setup.discardPile?.slice() ?? [],
   };
 }
 
@@ -130,9 +130,9 @@ export function runCardTest(card: CardDef, test: CardTest): CardTestResult {
   const failures: CardTestFailure[] = [];
   if (test.expect.player) compareCombatant('player', test.expect.player, state.player, failures);
   if (test.expect.target) compareCombatant('target', test.expect.target, state.enemies[0]!, failures);
-  compareSize('hand', test.expect.handSize, state.hand.length, failures);
-  compareSize('drawPile', test.expect.drawPileSize, state.drawPile.length, failures);
-  compareSize('discardPile', test.expect.discardPileSize, state.discardPile.length, failures);
+  compareSize('hand', test.expect.handSize, state.player.hand.length, failures);
+  compareSize('drawPile', test.expect.drawPileSize, state.player.drawPile.length, failures);
+  compareSize('discardPile', test.expect.discardPileSize, state.player.discardPile.length, failures);
 
   return { ok: failures.length === 0, failures };
 }
@@ -176,9 +176,9 @@ export function snapshotExpect(
     expect: {
       player: snap(state.player),
       target: snap(state.enemies[0]!),
-      handSize: state.hand.length,
-      drawPileSize: state.drawPile.length,
-      discardPileSize: state.discardPile.length,
+      handSize: state.player.hand.length,
+      drawPileSize: state.player.drawPile.length,
+      discardPileSize: state.player.discardPile.length,
     },
   };
 }

@@ -30,17 +30,18 @@ Phased plan. **We are at the end of Phase 0.** The *game design* now exists — 
 - **Game log (combat log):** a chronological, human-readable record built from the reducer's `GameEvent` stream (not from state). Required in the game view and the Card Lab Play test. See the requirement in `docs/atomic-actions.md`.
 - Richer Card Lab: ✅ CardTest authoring UI + turn controls + resource chips; ⏳ AST pretty-print, error underlining in the text, multi-target/AoE testing.
 
-## Phase 2 — Game loop (a single self-contained battle)
+## Phase 2 — Game loop (a single self-contained battle) 🟡 first playable
 
-Build the one-battle loop the design describes (`reference/design.md` → "Game Setup & Core Rules"):
+The one-battle loop the design describes (`reference/design.md` → "Game Setup & Core Rules") is now playable end to end — pick a character, keep 1 of 3 relics, draw 5 / discard 2, and fight the opponent to 0 HP. See `docs/battle.md`.
 
-- Setup: 20 HP, a 20-card deck drawn from a character's ~40-card pool, draw 5 / discard 2 to open, draw 1 per turn, hand max 10.
-- Energy/mana economy and turn structure; win/lose vs. one opponent.
-- **Block** (temporary) vs. **Shield** (persistent) as two distinct resources — the engine has only `block` today.
-- One opponent with an enemy model (scripted intents or the same card system — an open design question; see `vision.md`).
-- Real UI for the game view (beside the Card Lab).
+- ✅ **Per-combatant decks:** card piles (`drawPile`/`hand`/`discardPile`/`exhaustPile`) moved from `GameState` onto `Combatant`, so the enemy draws and plays cards through the *same* reducer as the player — the symmetric, multiplayer-ready shape.
+- ✅ **Battle driver** (`src/cards/match/battle.ts`): setup (deck build, relic combat-start, opening hand), mulligan, `playFromHand` (energy validate/spend → move to discard → resolve with triggers), `endPlayerTurn` (player end → **enemy's full card-playing turn** → next player turn), and win/lose via `SetPhase`.
+- ✅ **Energy economy & turn structure:** base 1 energy/turn (`SetEnergy` reset) + Lightning clouds; draw 1 per turn; reshuffle on deckout.
+- ✅ **Block** (temporary) vs. **Shield** (persistent) — already two distinct resources on `Combatant`.
+- ✅ **Game view** (`src/ui/game/BattleScreen.tsx`): the full battle screen from the mockups, using the hand-drawn art for cards/heroes/clouds and HTML for every numeric value; character/relic select (`PlaySetup.tsx`) at `#/play`.
+- ⏳ Still open: full ~40-card pools + Persistent cards in decks, a richer/varied enemy model (enemy persistents & clouds), multi-target/AoE selection, the other three characters, and formal move-intent validation. The **game log** (below) is also still to come in the game view.
 
-Several design ambiguities gate this phase (energy economy, enemy model, turn limit) — see the open questions in `vision.md`.
+Several design ambiguities that gated this phase are now decided (energy economy, enemy model = same card system, no turn limit) — see `vision.md`.
 
 ## Phase 3 — Content & balance
 

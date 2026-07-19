@@ -12,6 +12,7 @@
  * initialState(seed) and you reproduce any state exactly.
  */
 import type { CardId, CloudType, EntityId, ScaleMetric } from '@shared/index';
+import type { Phase } from '@engine/state/index';
 
 export interface StartTurn {
   readonly type: 'StartTurn';
@@ -21,21 +22,42 @@ export interface EndTurn {
   readonly type: 'EndTurn';
 }
 
+/** Set the battle phase directly (mulligan/player/enemy/won/lost). */
+export interface SetPhase {
+  readonly type: 'SetPhase';
+  readonly phase: Phase;
+}
+
 /** Clear a combatant's temporary block (done at the start of their turn). */
 export interface ClearBlock {
   readonly type: 'ClearBlock';
   readonly target: EntityId;
 }
 
-/** Move `count` cards from the top... end of the player's hand to the discard pile. */
+/** Move `count` cards from the end of `owner`'s hand to their discard pile. */
 export interface DiscardCards {
   readonly type: 'DiscardCards';
+  /** Whose hand to discard from. Defaults to the player when omitted. */
+  readonly owner?: EntityId;
   readonly count: number;
 }
 
-/** Deal damage to one enemy chosen via the in-state RNG (Storm cloud, etc.). */
+/** Move a specific card from `owner`'s hand (by index) to their discard pile. */
+export interface MoveHandCardToDiscard {
+  readonly type: 'MoveHandCardToDiscard';
+  /** Whose hand. Defaults to the player when omitted. */
+  readonly owner?: EntityId;
+  readonly index: number;
+}
+
+/**
+ * Deal damage to one random living *opponent* (Storm cloud, etc.). Perspective
+ * is set by `self`: opponents are the other side (enemies of the player, or the
+ * player if `self` is an enemy). Defaults to the player's opponents when omitted.
+ */
 export interface DealDamageToRandomEnemy {
   readonly type: 'DealDamageToRandomEnemy';
+  readonly self?: EntityId;
   readonly amount: number;
 }
 
@@ -60,6 +82,8 @@ export interface AddPersistent {
 
 export interface DrawCards {
   readonly type: 'DrawCards';
+  /** Whose deck to draw from. Defaults to the player when omitted. */
+  readonly owner?: EntityId;
   readonly count: number;
 }
 
@@ -90,6 +114,13 @@ export interface Heal {
 
 export interface GainEnergy {
   readonly type: 'GainEnergy';
+  readonly target: EntityId;
+  readonly amount: number;
+}
+
+/** Set a combatant's energy to an exact value (used to reset to base each turn). */
+export interface SetEnergy {
+  readonly type: 'SetEnergy';
   readonly target: EntityId;
   readonly amount: number;
 }
@@ -163,8 +194,10 @@ export interface DiscardMinion {
 export type Action =
   | StartTurn
   | EndTurn
+  | SetPhase
   | ClearBlock
   | DiscardCards
+  | MoveHandCardToDiscard
   | AddPersistent
   | DrawCards
   | DealDamage
@@ -174,6 +207,7 @@ export type Action =
   | GainShield
   | Heal
   | GainEnergy
+  | SetEnergy
   | GainPoison
   | GainPower
   | GainBravery

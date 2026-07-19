@@ -32,18 +32,18 @@ describe('reducer: apply', () => {
     const deck: CardId[] = [cardId('a'), cardId('b'), cardId('c')];
     const state = initialState({ seed: 's', deck });
     const result = apply(state, { type: 'DrawCards', count: 2 });
-    expect(result.state.hand).toHaveLength(2);
-    expect(result.state.drawPile).toHaveLength(1);
+    expect(result.state.player.hand).toHaveLength(2);
+    expect(result.state.player.drawPile).toHaveLength(1);
   });
 
   it('reshuffles the discard pile when the draw pile is empty', () => {
+    const base = initialState({ seed: 's', deck: [] });
     const state: GameState = {
-      ...initialState({ seed: 's', deck: [] }),
-      drawPile: [],
-      discardPile: [cardId('x'), cardId('y')],
+      ...base,
+      player: { ...base.player, drawPile: [], discardPile: [cardId('x'), cardId('y')] },
     };
     const result = apply(state, { type: 'DrawCards', count: 1 });
-    expect(result.state.hand).toHaveLength(1);
+    expect(result.state.player.hand).toHaveLength(1);
     expect(result.events.map((e) => e.type)).toContain('DeckReshuffled');
   });
 

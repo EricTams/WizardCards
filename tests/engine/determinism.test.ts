@@ -24,11 +24,12 @@ describe('engine determinism', () => {
   it('different seeds shuffle the reshuffled pile differently', () => {
     // Force the RNG-driven path: empty draw pile + full discard pile means the
     // next draw reshuffles, and the resulting order depends on the seed.
-    const base = { ...initialState({ seed: 'x', deck }), drawPile: [], discardPile: deck };
+    const seeded = initialState({ seed: 'x', deck });
+    const base = { ...seeded, player: { ...seeded.player, drawPile: [], discardPile: deck } };
     const actions: Action[] = [{ type: 'DrawCards', count: 10 }];
     const a = applyAll({ ...base, rng: initialState({ seed: 'seed-A', deck }).rng }, actions).state;
     const b = applyAll({ ...base, rng: initialState({ seed: 'seed-B', deck }).rng }, actions).state;
-    expect(a.hand).not.toEqual(b.hand);
+    expect(a.player.hand).not.toEqual(b.player.hand);
   });
 
   it('property: replaying any action sequence twice is identical', () => {

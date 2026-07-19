@@ -13,16 +13,18 @@
  */
 import type { CardId, CloudType, EntityId, ScaleMetric } from '@shared/index';
 import { entityId } from '@shared/index';
-import type { Combatant, GameState, MinionState } from '@engine/state/index';
+import type { Combatant, GameState, MinionState, Phase } from '@engine/state/index';
 import type { Action } from '@engine/actions/index';
 import { nextInt, shuffle } from '@engine/rng/index';
 
 export type GameEvent =
   | { readonly type: 'TurnStarted'; readonly turn: number }
   | { readonly type: 'TurnEnded'; readonly turn: number }
-  | { readonly type: 'CardsDrawn'; readonly cards: readonly CardId[] }
-  | { readonly type: 'CardsDiscarded'; readonly cards: readonly CardId[] }
-  | { readonly type: 'DeckReshuffled' }
+  | { readonly type: 'PhaseChanged'; readonly phase: Phase }
+  | { readonly type: 'CardsDrawn'; readonly owner: EntityId; readonly cards: readonly CardId[] }
+  | { readonly type: 'CardsDiscarded'; readonly owner: EntityId; readonly cards: readonly CardId[] }
+  | { readonly type: 'DeckReshuffled'; readonly owner: EntityId }
+  | { readonly type: 'EnergySet'; readonly target: EntityId; readonly amount: number }
   // `unblocked` is the portion that got past block+shield — what triggers like
   // Rot Away ("whenever you deal unblocked damage") key off.
   | { readonly type: 'DamageDealt'; readonly target: EntityId; readonly amount: number; readonly unblocked: number }
@@ -60,6 +62,9 @@ export function apply(state: GameState, action: Action): ApplyResult {
         events: [{ type: 'TurnEnded', turn: state.turn }],
       };
 
+    case 'SetPhase':
+      return { state: { ...state, phase: action.phase }, events: [{ type: 'PhaseChanged', phase: action.phase }] };
+
     case 'ClearBlock':
       return {
         state: mapCombatant(state, action.target, (c) => ({ ...c, block: 0 })),
@@ -67,10 +72,13 @@ export function apply(state: GameState, action: Action): ApplyResult {
       };
 
     case 'DiscardCards':
-      return discardCards(state, action.count);
+      return discardCards(state, action.owner ?? state.player.id, action.count);
+
+    case 'MoveHandCardToDiscard':
+      return moveHandCardToDiscard(state, action.owner ?? state.player.id, action.index);
 
     case 'DealDamageToRandomEnemy':
-      return dealDamageToRandomEnemy(state, action.amount);
+      return dealDamageToRandomEnemy(state, action.self ?? state.player.id, action.amount);
 
     case 'DealDamageScaled':
       return dealDamage(state, action.target, action.multiplier * metricValue(state, action.self, action.per));
@@ -85,7 +93,7 @@ export function apply(state: GameState, action: Action): ApplyResult {
       };
 
     case 'DrawCards':
-      return drawCards(state, action.count);
+      return drawCards(state, action.owner ?? state.player.id, action.count);
 
     case 'DealDamage':
       return dealDamage(state, action.target, action.amount);
@@ -115,6 +123,12 @@ export function apply(state: GameState, action: Action): ApplyResult {
       return {
         state: mapCombatant(state, action.target, (c) => ({ ...c, energy: c.energy + action.amount })),
         events: [{ type: 'EnergyGained', target: action.target, amount: action.amount }],
+      };
+
+    case 'SetEnergy':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({ ...c, energy: Math.max(0, action.amount) })),
+        events: [{ type: 'EnergySet', target: action.target, amount: Math.max(0, action.amount) }],
       };
 
     case 'GainPoison':
@@ -179,6 +193,16 @@ function findCombatant(state: GameState, id: EntityId): Combatant | undefined {
 }
 
 /**
+ * The combatants on the other side of `self`. With today's one-player-vs-N model
+ * that's the enemies (if `self` is the player) or just the player (if `self` is
+ * an enemy) — which is exactly what "random/all opponent(s)" targeting needs
+ * once the enemy plays cards through the same reducer.
+ */
+export function opponentsOf(state: GameState, self: EntityId): readonly Combatant[] {
+  return state.player.id === self ? state.enemies : [state.player];
+}
+
+/**
  * Measure a scaling metric against a combatant — "your energy", "unique clouds",
  * "minions in play". Used by DealDamageScaled and by scaled trigger effects.
  */
@@ -207,10 +231,13 @@ export function metricValue(state: GameState, id: EntityId, metric: ScaleMetric)
   }
 }
 
-function drawCards(state: GameState, count: number): ApplyResult {
-  let drawPile = state.drawPile.slice();
-  let discardPile = state.discardPile.slice();
-  const hand = state.hand.slice();
+function drawCards(state: GameState, owner: EntityId, count: number): ApplyResult {
+  const c = findCombatant(state, owner);
+  if (!c) return { state, events: [{ type: 'CardsDrawn', owner, cards: [] }] };
+
+  let drawPile = c.drawPile.slice();
+  let discardPile = c.discardPile.slice();
+  const hand = c.hand.slice();
   let rng = state.rng;
   const drawn: CardId[] = [];
   const events: GameEvent[] = [];
@@ -222,16 +249,16 @@ function drawCards(state: GameState, count: number): ApplyResult {
       drawPile = reshuffled.value;
       rng = reshuffled.state;
       discardPile = [];
-      events.push({ type: 'DeckReshuffled' });
+      events.push({ type: 'DeckReshuffled', owner });
     }
     const card = drawPile.shift()!;
     hand.push(card);
     drawn.push(card);
   }
 
-  events.push({ type: 'CardsDrawn', cards: drawn });
+  events.push({ type: 'CardsDrawn', owner, cards: drawn });
   return {
-    state: { ...state, drawPile, hand, discardPile, rng },
+    state: { ...mapCombatant(state, owner, (cc) => ({ ...cc, drawPile, hand, discardPile })), rng },
     events,
   };
 }
@@ -256,26 +283,43 @@ function dealDamage(state: GameState, target: EntityId, amount: number): ApplyRe
   };
 }
 
-function dealDamageToRandomEnemy(state: GameState, amount: number): ApplyResult {
-  const living = state.enemies.filter((e) => e.hp > 0);
+function dealDamageToRandomEnemy(state: GameState, self: EntityId, amount: number): ApplyResult {
+  const living = opponentsOf(state, self).filter((e) => e.hp > 0);
   if (living.length === 0) return { state, events: [] };
   const draw = nextInt(state.rng, 0, living.length - 1);
   const target = living[draw.value]!.id;
-  const result = dealDamage({ ...state, rng: draw.state }, target, amount);
-  return result;
+  return dealDamage({ ...state, rng: draw.state }, target, amount);
 }
 
-function discardCards(state: GameState, count: number): ApplyResult {
-  const n = Math.min(Math.max(0, count), state.hand.length);
-  if (n === 0) return { state, events: [{ type: 'CardsDiscarded', cards: [] }] };
-  const discarded = state.hand.slice(state.hand.length - n);
+function discardCards(state: GameState, owner: EntityId, count: number): ApplyResult {
+  const c = findCombatant(state, owner);
+  if (!c) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [] }] };
+  const n = Math.min(Math.max(0, count), c.hand.length);
+  if (n === 0) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [] }] };
+  const discarded = c.hand.slice(c.hand.length - n);
   return {
-    state: {
-      ...state,
-      hand: state.hand.slice(0, state.hand.length - n),
-      discardPile: [...state.discardPile, ...discarded],
-    },
-    events: [{ type: 'CardsDiscarded', cards: discarded }],
+    state: mapCombatant(state, owner, (cc) => ({
+      ...cc,
+      hand: cc.hand.slice(0, cc.hand.length - n),
+      discardPile: [...cc.discardPile, ...discarded],
+    })),
+    events: [{ type: 'CardsDiscarded', owner, cards: discarded }],
+  };
+}
+
+function moveHandCardToDiscard(state: GameState, owner: EntityId, index: number): ApplyResult {
+  const c = findCombatant(state, owner);
+  if (!c || index < 0 || index >= c.hand.length) {
+    return { state, events: [{ type: 'CardsDiscarded', owner, cards: [] }] };
+  }
+  const card = c.hand[index]!;
+  return {
+    state: mapCombatant(state, owner, (cc) => ({
+      ...cc,
+      hand: cc.hand.filter((_, i) => i !== index),
+      discardPile: [...cc.discardPile, card],
+    })),
+    events: [{ type: 'CardsDiscarded', owner, cards: [card] }],
   };
 }
 

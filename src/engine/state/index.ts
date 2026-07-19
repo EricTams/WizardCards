@@ -12,10 +12,14 @@
  * and the trigger system that makes clouds/minions *act* are still to come (see
  * `docs/roadmap.md`).
  */
-import type { CardId, CloudType, EntityId } from '@shared/index';
+import type { CardId, CharacterId, CloudType, EntityId } from '@shared/index';
 import { seedRng, type RngState } from '@engine/rng/index';
 
-export type Phase = 'setup' | 'playerTurn' | 'enemyTurn' | 'won' | 'lost';
+/**
+ * Battle phases. `mulligan` is the opening draw-5/discard-2 step; `playerTurn`
+ * and `enemyTurn` alternate until one side hits 0 HP (`won`/`lost`).
+ */
+export type Phase = 'setup' | 'mulligan' | 'playerTurn' | 'enemyTurn' | 'won' | 'lost';
 
 /** A summoned minion in play. References the card it was summoned from. */
 export interface MinionState {
@@ -28,6 +32,11 @@ export interface MinionState {
 export interface Combatant {
   readonly id: EntityId;
   readonly name: string;
+  /**
+   * Which character this combatant is (drives hero/deck art in the UI). Optional
+   * so the many test/sandbox construction sites don't have to specify it.
+   */
+  readonly character?: CharacterId;
   readonly hp: number;
   readonly maxHp: number;
   /** Temporary damage soak. Design: cleared each turn (turn structure is later). */
@@ -52,6 +61,16 @@ export interface Combatant {
    * (`src/cards/match`), not by the engine reducer.
    */
   readonly persistents: readonly CardId[];
+  /**
+   * This combatant's own card piles. Every combatant carries its own deck so the
+   * enemy can draw and play cards through the exact same reducer as the player —
+   * the model the design's symmetric/multiplayer play needs. Ordered lists of
+   * CardIds referencing the card registry.
+   */
+  readonly drawPile: readonly CardId[];
+  readonly hand: readonly CardId[];
+  readonly discardPile: readonly CardId[];
+  readonly exhaustPile: readonly CardId[];
 }
 
 /**
@@ -72,6 +91,10 @@ export function makeCombatant(
     clouds: [],
     minions: [],
     persistents: [],
+    drawPile: [],
+    hand: [],
+    discardPile: [],
+    exhaustPile: [],
     ...props,
   };
 }
@@ -85,13 +108,10 @@ export interface GameState {
   readonly idSeq: number;
   readonly phase: Phase;
   readonly turn: number;
+  /** The human player. Their card piles live on the combatant (`player.hand`, …). */
   readonly player: Combatant;
+  /** The opponents. Each carries its own piles too, so they play like the player. */
   readonly enemies: readonly Combatant[];
-  /** Card piles are ordered lists of CardIds referencing the card registry. */
-  readonly drawPile: readonly CardId[];
-  readonly hand: readonly CardId[];
-  readonly discardPile: readonly CardId[];
-  readonly exhaustPile: readonly CardId[];
 }
 
 export interface NewGameOptions {
@@ -109,14 +129,11 @@ export function initialState(opts: NewGameOptions): GameState {
     turn: 0,
     player: makeCombatant({
       id: 'player' as EntityId,
-      name: 'Wizard',
+      name: 'Player',
       hp: 50,
       maxHp: 50,
+      drawPile: opts.deck.slice(),
     }),
     enemies: [],
-    drawPile: opts.deck.slice(),
-    hand: [],
-    discardPile: [],
-    exhaustPile: [],
   };
 }

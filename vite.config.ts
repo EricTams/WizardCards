@@ -8,6 +8,10 @@ export default defineConfig({
   // Served from https://<user>.github.io/WizardCards/ on GitHub Pages.
   // Change to '/' for a custom domain or a <user>.github.io root site.
   base: '/WizardCards/',
+  // Serve the hand-drawn art (cards, heroes, cloud/status sprites) as static
+  // files: `assets/art/…` is exposed at `<base>art/…` in dev and copied into the
+  // build. See `src/ui/game/art.ts` for how the game references it.
+  publicDir: 'assets',
   plugins: [react()],
   resolve: {
     alias: {

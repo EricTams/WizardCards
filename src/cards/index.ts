@@ -48,5 +48,24 @@ export type { PersistentBehavior } from '@cards/match/compile-persistent';
 export { compilePersistent } from '@cards/match/compile-persistent';
 export { activePersistents, persistentBehavior } from '@cards/match/persistents';
 
+export type { BattleOptions, EnemyPlay } from '@cards/match/battle';
+export {
+  newBattle,
+  confirmMulligan,
+  playFromHand,
+  endPlayerTurn,
+  endPlayerPhase,
+  beginEnemyTurn,
+  enemyPlayOne,
+  aiPlayOne,
+  beginPlayerTurn,
+  OPENING_HAND,
+  OPENING_DISCARD,
+  PLAYER_ID,
+  ENEMY_ID,
+} from '@cards/match/battle';
+export type { CharacterDef, RelicDef } from '@cards/match/content';
+export { CHARACTERS, RELICS, getRelic, BASE_MAX_HP, BASE_ENERGY, DECK_SIZE } from '@cards/match/content';
+
 export { ok, err };
 export type { Result, Diagnostic };

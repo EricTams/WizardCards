@@ -11,7 +11,7 @@ export { initialState, makeCombatant } from '@engine/state/index';
 export type { Action, ActionType } from '@engine/actions/index';
 
 export type { GameEvent, ApplyResult } from '@engine/reducers/index';
-export { apply, applyAll, metricValue } from '@engine/reducers/index';
+export { apply, applyAll, metricValue, opponentsOf } from '@engine/reducers/index';
 
 export type { RngState } from '@engine/rng/index';
 export { seedRng, nextFloat, nextInt, shuffle } from '@engine/rng/index';

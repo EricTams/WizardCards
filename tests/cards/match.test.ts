@@ -24,8 +24,8 @@ describe('cloud start-of-turn triggers', () => {
     expect(after.player.hp).toBe(21); // Snow heals 1
     expect(after.player.block).toBe(0); // block cleared
     expect(after.enemies[0]!.hp).toBe(29); // Storm deals 1
-    expect(after.hand).toHaveLength(1); // Fog draws 1
-    expect(after.drawPile).toHaveLength(2);
+    expect(after.player.hand).toHaveLength(1); // Fog draws 1
+    expect(after.player.drawPile).toHaveLength(2);
   });
 
   it('Winter makes Snow clouds heal 2', () => {
@@ -86,16 +86,16 @@ describe('end of turn', () => {
   it('Fog clouds force a discard', () => {
     const state = buildTestState({ player: { clouds: ['fog'] }, hand: ['a', 'b'] as CardId[] });
     const { state: after } = endTurn(state);
-    expect(after.hand).toHaveLength(1);
-    expect(after.discardPile).toHaveLength(1);
+    expect(after.player.hand).toHaveLength(1);
+    expect(after.player.discardPile).toHaveLength(1);
     expect(after.phase).toBe('enemyTurn');
   });
 
   it('Autumn suppresses the Fog discard', () => {
     const state = buildTestState({ player: { clouds: ['fog'], persistents: [AUTUMN.id] }, hand: ['a', 'b'] as CardId[] });
     const { state: after } = endTurn(state);
-    expect(after.hand).toHaveLength(2);
-    expect(after.discardPile).toHaveLength(0);
+    expect(after.player.hand).toHaveLength(2);
+    expect(after.player.discardPile).toHaveLength(0);
   });
 });
 

@@ -9,21 +9,42 @@ export function MainMenu() {
       <p style={{ color: '#666', marginTop: 8 }}>A deckbuilder with English-authored cards.</p>
 
       <nav style={{ display: 'grid', gap: 12, maxWidth: 280, margin: '40px auto 0' }}>
-        <button
-          disabled
-          style={{ padding: '12px 16px', font: 'inherit', fontSize: 18, opacity: 0.5, cursor: 'not-allowed' }}
-          title="Coming soon"
-        >
-          Play (coming soon)
-        </button>
         <a
-          href="#/cardlab"
+          href="#/play"
           style={{
             padding: '12px 16px',
             fontSize: 18,
             textDecoration: 'none',
             color: 'white',
             background: '#6c5ce7',
+            borderRadius: 6,
+          }}
+        >
+          ▶ Play
+        </a>
+        <a
+          href="#/attract"
+          style={{
+            padding: '12px 16px',
+            fontSize: 18,
+            textDecoration: 'none',
+            color: '#6c5ce7',
+            background: 'white',
+            border: '1px solid #6c5ce7',
+            borderRadius: 6,
+          }}
+        >
+          👁 Attract Mode (AI vs AI)
+        </a>
+        <a
+          href="#/cardlab"
+          style={{
+            padding: '12px 16px',
+            fontSize: 18,
+            textDecoration: 'none',
+            color: '#6c5ce7',
+            background: 'white',
+            border: '1px solid #6c5ce7',
             borderRadius: 6,
           }}
         >

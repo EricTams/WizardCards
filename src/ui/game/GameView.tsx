@@ -25,7 +25,7 @@ export function GameView({
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ color: '#888', fontSize: 13 }}>
-        Turn {state.turn} · {state.phase} · hand {state.hand.length} · draw {state.drawPile.length}
+        Turn {state.turn} · {state.phase} · hand {state.player.hand.length} · draw {state.player.drawPile.length}
       </div>
 
       <CombatantCard combatant={state.player} accent="#2980b9" />

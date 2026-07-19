@@ -49,6 +49,6 @@ Reconciling `reference/design.md` against the engine settled these:
 - **No cloud-slot cap currently** — the Cloud has no maximum number of clouds for now, so "Increase Max Clouds" cards are effectively no-ops until a cap is introduced.
 - **Relic offer** — the 3 relics you choose from are drawn from **both** the general pool and your character's pool.
 
-Known engine work (not open questions): model **Block** (temporary) and **Shield** (persistent) as two separate resources — today there's only a single `block`.
+Done since these were written: **Block** (temporary) and **Shield** (persistent) are now two separate resources on `Combatant` (damage soaks block → shield → hp), and the "opponents play like players" decision is realized — the enemy draws and plays real cards through the same reducer in the battle loop (`docs/battle.md`).
 
 These are captured here so we don't lose them.

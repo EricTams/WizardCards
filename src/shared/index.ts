@@ -25,6 +25,13 @@ export type CloudType = 'lightning' | 'storm' | 'snow' | 'fog';
 export const CLOUD_TYPES: readonly CloudType[] = ['lightning', 'storm', 'snow', 'fog'];
 
 /**
+ * The five playable characters ("wanderers"). A serializable tag carried on a
+ * Combatant so the UI can pick the right hero/deck art; the engine itself is
+ * character-agnostic. Only `cloud` and `wizard` have authored cards today.
+ */
+export type CharacterId = 'cloud' | 'wizard' | 'crab' | 'oldLady' | 'writer';
+
+/**
  * A quantity an effect can scale off of, measured against the caster at reduce
  * time — "equal to your energy" / "for each unique cloud". Lives in `shared`
  * because both the engine (computes it) and the DSL (parses it) refer to it.

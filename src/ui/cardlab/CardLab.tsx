@@ -123,9 +123,9 @@ export function CardLab() {
     return {
       player: pick(arena.player),
       ...(enemy ? { target: pick(enemy) } : {}),
-      hand: arena.hand,
-      drawPile: arena.drawPile,
-      discardPile: arena.discardPile,
+      hand: arena.player.hand,
+      drawPile: arena.player.drawPile,
+      discardPile: arena.player.discardPile,
     };
   }
 

@@ -1,0 +1,46 @@
+# The Battle Loop & Game View
+
+How a self-contained match is played (the Phase-2 game loop) and how it's drawn.
+
+## Setup → play → outcome
+
+A match is `newBattle({ character, relicId, seed })` in `src/cards/match/battle.ts`:
+
+1. **Decks.** Each combatant gets a shuffled 20-card deck (`buildDeck` samples the character's ~40-card pool). Playable characters today: **Cloud** and **Wizard**. The opponent is a cloud-themed "Rival Cloud" with a curated attack deck.
+2. **Relic.** The chosen relic's `onCombatStart` effects fire once (e.g. Old Shield → 5 shields), applied through the reducer.
+3. **Opening hand.** Both sides draw 5; the game pauses in the `mulligan` phase for the player to discard 2 (`confirmMulligan`), then turn 1 begins.
+4. **Turns.** Each turn you start with base energy (1) plus Lightning-cloud energy, draw 1, and play cards while you can afford them. Cards cost 1 by default; energy cards let you play more.
+5. **The enemy plays the same game.** After your end-of-turn, the enemy draws and plays real cards from its own deck via `playFromHand`. Its AI is `aiPlayOne(state, actorId)`: gather every legal play (in hand + affordable), pick one **uniformly at random** via the in-state RNG, and play it at a random opponent — repeated until no legal play remains. The turn is decomposed into steps — `endPlayerPhase` → `beginEnemyTurn` → `enemyPlayOne` (one random card) × N → `beginPlayerTurn` — so the game view can pace them (see below); `endPlayerTurn` composes the same steps synchronously for tests/headless play. `beginEnemyTurn` runs the same start-of-turn cascade (`runTurnCascade`) as the player, so a card-playing Cloud opponent fires *its own* clouds and replays *its own* minions.
+6. **Outcome.** After every damaging step the driver checks: player at 0 HP → `lost`, all enemies at 0 → `won` (set via `SetPhase`).
+
+Everything is a pure function of `(seed, your moves)`, so a battle is deterministic and replayable (see `tests/cards/battle.test.ts`).
+
+### Energy economy
+
+`SetEnergy` resets energy to the base (1) at the start of a normal turn — *before* clouds add to it, so "start with over 3 energy" checks (Summer) see the post-Lightning total. Turn 1 skips the reset so a combat-start energy relic (Calculator) survives into the first turn.
+
+## The game view
+
+`src/ui/game/BattleScreen.tsx` renders a `GameState` as the full-screen scene in `reference/screen mockups`:
+
+- A themed background (field/chamber/beach) per the player's character.
+- Your hero + cloud/minion tokens bottom-left; the opponent top-right (its hero art mirrored to face you).
+- A fanned hand of **card art** along the bottom; click a card to play it (or, during the mulligan, to mark it for discard).
+- **Every number is a plain HTML element** — HP bars, energy pips, block/shield/poison chips, deck counts, card cost badges. Only heroes, clouds, minions, and card faces are art. This is a hard rule: art is for *pictures*, HTML for *values*.
+- A **play animation** makes each card legible as it resolves (`src/ui/game/effects.ts` + `EffectsLayer.tsx`): the played card rises into a center **play area** enlarged, with a text bubble of its English rules; a **projectile per outgoing effect** flies from it to the right target (damage → a red comet at the opponent; clouds drift to the caster; self-buffs like shield/heal/poison pop in place); and on impact the new state applies (bars move) as a **floating number** pops at the target ("-4", "+3", "❄×2", or "blocked"). It's all driven by the `impactsFromEvents` mapping, which is the single place effect visuals are defined. `BattleScreen.animateAndApply` owns the timing (rise → fly → impact) and is shared by player, enemy, and Attract Mode; the engine/driver stay pure (tests apply the same plays instantly).
+- A **combat log** (top-left panel) shows how each play resolved — a color-coded, titled block per card play / turn marker (e.g. "The Cloud plays Cyclone" → "+1 Storm cloud", "Rival Cloud plays Zap" → "0 damage → The Cloud (2 blocked)", "+1 energy"). It's built purely from the engine's `GameEvent` stream by `src/ui/game/combatLog.ts` (`describeEvent`/`describeEvents`), so it stays accurate for effects that leave no lasting state trace, and it's the same feed in single-player and Attract Mode. See the game-log requirement in `docs/atomic-actions.md`.
+
+Art resolution and sprite-sheet metadata live in `src/ui/game/art.ts`; `<Sprite>` (`Sprite.tsx`) animates a horizontal sheet with a pure-CSS `steps()` scroll. The pre-battle character/relic select is `PlaySetup.tsx`, reached from the menu at `#/play`.
+
+**Paced enemy turn.** When you end your turn, the game view drives the decomposed enemy steps on a watchable clock: it waits **3s** before the enemy starts, then plays one random card every **1s** until the enemy is out of legal plays, then hands control back. It's an `async` sequence in `BattleScreen.doEndTurn` that advances a local state through `beginEnemyTurn`/`enemyPlayOne`/`beginPlayerTurn` (`setState` per step, `setTimeout` between), guarded by a mounted-ref. Player input is disabled while the enemy acts (`enemyActing`). The timing lives only in the view — the driver stays pure — so tests run the same battle instantly.
+
+**Attract Mode** (`#/attract`, the menu's "Attract Mode" button) is an AI-vs-AI demo — **The Wizard vs The Cloud** — that auto-plays and loops. `BattleScreen`'s `auto` prop switches on a conductor (a `useEffect` that runs once): it auto-opens the mulligan, then walks the phase machine, using the **same** `aiPlayOne` for *both* sides (the player side too), paced 3s per turn / 1s per card, and restarts with a fresh seed when a side wins. All human input is hidden. Because both sides are just `aiPlayOne` + the shared turn steps, an entire match is deterministic and testable headlessly (`tests/cards/battle.test.ts` runs one to completion). The opponent here is a *real* Cloud (its full pool), not the curated Rival Cloud — `newBattle`'s `enemyCharacter` option builds it.
+
+## Known limitations (first playable)
+
+These are deliberate cuts for the first playable build, not invariants:
+
+- **Characters:** only Cloud (full hero art) and Wizard (a placeholder box stands in for the missing hero sprite) are playable; the other three have no authored cards yet.
+- **Decks** draw from each character's *authored* pool (Cloud 20, Wizard 21), not the full ~40 in `reference/design.md`, and exclude Persistent cards — so the persistent-owner is always the player.
+- **Single-player's enemy** is a fixed "Rival Cloud" with a curated attack/defense deck (no cloud/poison/minion cards), which keeps the player's reactive persistents correctly inert during the enemy's turn. Attract Mode already shows a *full* character opponent playing its own clouds/minions, so a richer single-player enemy is mostly a content choice now; enemy **persistents** are still unmodelled (`activePersistents` reads the player), so give AI decks no Persistent cards.
+- **Targeting** auto-aims at the sole enemy; multi-target/AoE selection is future work.

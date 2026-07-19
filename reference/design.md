@@ -21,8 +21,9 @@ Rules clarifications (decided; also in `docs/vision.md`):
 
 - Opening hand: draw 5, discard 2, so you begin turn 1 holding 3 cards. Hand max is 10.
 
-Known engine work (not open questions): Block (temporary) and Shield (persistent) must become two distinct
-resources — today the engine has only a single `block`.
+Update: Block (temporary) and Shield (persistent) are now two distinct resources on Combatant, and the
+single-battle game loop (character/relic select → battle vs. a card-playing opponent) is playable — see
+docs/battle.md and docs/roadmap.md (Phase 2).
 -->
 
 # Weather \& Wanderers — Card Game Rulebook
