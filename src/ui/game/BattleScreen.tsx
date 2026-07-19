@@ -22,6 +22,8 @@ import { heroSprite, cloudSprite, cardArtUrl, CARD_ART_W, CARD_ART_H, SPRITE_CSS
 import { describeEvents, nameMap, type LogEntry, type LogSide } from '@ui/game/combatLog';
 import { impactsFromEvents, impactAnchor, sceneAnchor } from '@ui/game/effects';
 import { EffectsLayer, EFFECTS_CSS, type Flyer, type Pop, type StagedCard } from '@ui/game/EffectsLayer';
+import { keywordsInText } from '@ui/game/keywords';
+import { CardTooltip, type TipContent } from '@ui/game/CardTooltip';
 
 /**
  * BattleScreen — the playable game view (see `reference/screen mockups`). A themed
@@ -106,6 +108,28 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const fxId = useRef(0);
   const animating = staged !== null;
+
+  // Hover tooltip (cards / minions / clouds): card text + keyword explanations.
+  const [tip, setTip] = useState<{ content: TipContent; x: number; y: number; above: boolean } | null>(null);
+  const showTip = useCallback((content: TipContent, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const above = r.top > 240; // room above? else drop below (for top-of-screen elements)
+    setTip({ content, x: r.left + r.width / 2, y: above ? r.top - 8 : r.bottom + 8, above });
+  }, []);
+  const hideTip = useCallback(() => setTip(null), []);
+  const hoverCard = useCallback(
+    (cardId: CardId, el: HTMLElement) => {
+      const c = getCard(cardId);
+      if (c) showTip({ title: c.name, cost: c.cost, text: c.text, keywords: keywordsInText(c.text) }, el);
+    },
+    [showTip],
+  );
+  const hoverCloud = useCallback(
+    (type: CloudType, el: HTMLElement) => {
+      showTip({ title: `${type[0]!.toUpperCase()}${type.slice(1)} Cloud`, keywords: keywordsInText(type) }, el);
+    },
+    [showTip],
+  );
 
   // Guards the paced sequences against setState-after-unmount.
   const mounted = useRef(true);
@@ -367,7 +391,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
         <div style={{ position: 'absolute', top: '16%', right: '6%', textAlign: 'center' }}>
           <CombatantBadges c={enemy} align="right" />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'flex-end', marginTop: 6 }}>
-            <CloudRow clouds={enemy.clouds} />
+            <CloudRow clouds={enemy.clouds} onHover={hoverCloud} onLeave={hideTip} />
             <HeroUnit c={enemy} flip />
           </div>
           <div style={{ ...tinyNote, marginTop: 4 }}>{enemy.drawPile.length} in deck</div>
@@ -379,11 +403,16 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
         <CombatantBadges c={player} align="left" />
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginTop: 6 }}>
           <HeroUnit c={player} />
-          <CloudRow clouds={player.clouds} />
+          <CloudRow clouds={player.clouds} onHover={hoverCloud} onLeave={hideTip} />
           {player.minions.length > 0 && (
             <div style={{ display: 'flex', gap: 4 }}>
               {player.minions.map((m) => (
-                <div key={m.id} style={minionBox} title="minion">
+                <div
+                  key={m.id}
+                  style={{ ...minionBox, cursor: 'help' }}
+                  onMouseEnter={(e) => hoverCard(m.cardId, e.currentTarget)}
+                  onMouseLeave={hideTip}
+                >
                   M
                 </div>
               ))}
@@ -408,6 +437,8 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
         locked={auto || animating}
         hideIndex={playingIndex}
         onCard={(i) => (auto ? undefined : state.phase === 'mulligan' ? toggleMull(i) : playCardAt(i))}
+        onHoverCard={hoverCard}
+        onLeaveCard={hideTip}
       />
 
       {/* Turn / mulligan controls (hidden in Attract Mode) */}
@@ -429,6 +460,22 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
 
       {/* Play animations: staged card, projectiles, floating numbers */}
       <EffectsLayer staged={staged} flyers={flyers} pops={pops} />
+
+      {/* Hover tooltip: card/minion/cloud text + keyword glossary */}
+      {tip && (
+        <div
+          style={{
+            position: 'fixed',
+            left: Math.min(Math.max(tip.x, 150), window.innerWidth - 150),
+            top: tip.y,
+            transform: `translate(-50%, ${tip.above ? '-100%' : '0'})`,
+            zIndex: 30,
+            pointerEvents: 'none',
+          }}
+        >
+          <CardTooltip content={tip.content} />
+        </div>
+      )}
 
       {decided && !auto && <Outcome won={state.phase === 'won'} onRestart={restart} onExit={onExit} />}
     </div>
@@ -575,13 +622,26 @@ function OpponentHand({ count, emblem }: { count: number; emblem: string }) {
   );
 }
 
-function CloudRow({ clouds }: { clouds: readonly CloudType[] }) {
+function CloudRow({
+  clouds,
+  onHover,
+  onLeave,
+}: {
+  clouds: readonly CloudType[];
+  onHover?: (type: CloudType, el: HTMLElement) => void;
+  onLeave?: () => void;
+}) {
   if (clouds.length === 0) return null;
   return (
     <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>
       {clouds.map((t, i) => (
-        <div key={i} style={{ animation: `bob 2.4s ease-in-out ${i * 0.2}s infinite` }}>
-          <Sprite sprite={cloudSprite(t)} scale={1.4} title={`${t} cloud`} />
+        <div
+          key={i}
+          style={{ animation: `bob 2.4s ease-in-out ${i * 0.2}s infinite`, cursor: 'help' }}
+          onMouseEnter={onHover ? (e) => onHover(t, e.currentTarget) : undefined}
+          onMouseLeave={onLeave}
+        >
+          <Sprite sprite={cloudSprite(t)} scale={1.4} />
         </div>
       ))}
     </div>
@@ -643,6 +703,8 @@ function Hand({
   locked = false,
   hideIndex = null,
   onCard,
+  onHoverCard,
+  onLeaveCard,
 }: {
   hand: readonly CardId[];
   energy: number;
@@ -651,6 +713,8 @@ function Hand({
   locked?: boolean;
   hideIndex?: number | null;
   onCard: (i: number) => void;
+  onHoverCard?: (cardId: CardId, el: HTMLElement) => void;
+  onLeaveCard?: () => void;
 }) {
   const interactive = !locked && (phase === 'playerTurn' || phase === 'mulligan');
   return (
@@ -665,7 +729,9 @@ function Hand({
         alignItems: 'flex-end',
         gap: 0,
         zIndex: 4,
-        pointerEvents: interactive ? 'auto' : 'none',
+        // Always allow pointer events so cards can be hovered for their tooltip;
+        // clicking to play is still gated by `interactive` below.
+        pointerEvents: 'auto',
       }}
     >
       {hand.map((id, i) => {
@@ -676,7 +742,6 @@ function Hand({
           <HandCard
             key={`${id}-${i}`}
             name={card?.name ?? id}
-            text={card?.text ?? ''}
             cost={card?.cost ?? 0}
             artUrl={card ? cardArtUrl(card) : ''}
             index={i}
@@ -685,6 +750,8 @@ function Hand({
             dimmed={!affordable}
             hidden={i === hideIndex}
             onClick={() => interactive && onCard(i)}
+            onHover={(el) => onHoverCard?.(id, el)}
+            onLeave={() => onLeaveCard?.()}
           />
         );
       })}
@@ -694,7 +761,6 @@ function Hand({
 
 function HandCard({
   name,
-  text,
   cost,
   artUrl,
   index,
@@ -703,9 +769,10 @@ function HandCard({
   dimmed,
   hidden = false,
   onClick,
+  onHover,
+  onLeave,
 }: {
   name: string;
-  text: string;
   cost: number;
   artUrl: string;
   index: number;
@@ -714,6 +781,8 @@ function HandCard({
   dimmed: boolean;
   hidden?: boolean;
   onClick: () => void;
+  onHover?: (el: HTMLElement) => void;
+  onLeave?: () => void;
 }) {
   const mid = (count - 1) / 2;
   const offset = index - mid;
@@ -723,7 +792,8 @@ function HandCard({
   return (
     <div
       onClick={onClick}
-      title={`${name} — ${text}`}
+      onMouseEnter={onHover ? (e) => onHover(e.currentTarget) : undefined}
+      onMouseLeave={onLeave}
       className="handcard"
       style={{
         width: CARD_ART_W * scale,
