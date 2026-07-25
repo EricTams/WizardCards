@@ -204,6 +204,52 @@ export const DELIVERY: CardDef = {
   text: 'Minion. Draw 1 card.',
 };
 
+/** "Gain 2 Shields for this turn" — block, which is the soak that clears. */
+export const GUARD_DOG: CardDef = {
+  id: cardId('wizard-guard-dog'),
+  name: 'Guard Dog',
+  cost: 1,
+  text: 'Minion. Deal 1 damage. Gain 2 block.',
+};
+
+/** Venom that keeps its Poison, so the X-value survives to be spent again. */
+export const STICKY_POISON: CardDef = {
+  id: cardId('wizard-sticky-poison'),
+  name: 'Sticky Poison',
+  cost: 1,
+  text: 'Retain your poison. Venom.',
+};
+
+export const VIAL: CardDef = {
+  id: cardId('wizard-vial'),
+  name: 'Vial',
+  cost: 1,
+  text: 'Poison for each card played this turn.',
+};
+
+/** "Double your Poison" is Poison equal to what you already hold. */
+export const EXPLOSION: CardDef = {
+  id: cardId('wizard-explosion'),
+  name: 'Explosion',
+  cost: 1,
+  text: 'Poison equal to your poison. Discard your hand. Discard all minions.',
+};
+
+export const PILE_UP: CardDef = {
+  id: cardId('wizard-pile-up'),
+  name: 'Pile Up',
+  cost: 1,
+  text: 'Gain 1 shield for each minion in your discard pile.',
+};
+
+/** The retain arms the *next* Venom, which may be several cards later. */
+export const SACRIFICE: CardDef = {
+  id: cardId('wizard-sacrifice'),
+  name: 'Sacrifice',
+  cost: 1,
+  text: 'Poison 6. Discard 1 minion. Retain your poison.',
+};
+
 /** Every Wizard card in this batch, in table order. */
 export const WIZARD_CARDS: readonly CardDef[] = [
   WIZARD_ZAP,
@@ -233,4 +279,10 @@ export const WIZARD_CARDS: readonly CardDef[] = [
   UNFRIENDLY,
   BATTERY,
   DELIVERY,
+  GUARD_DOG,
+  STICKY_POISON,
+  VIAL,
+  EXPLOSION,
+  PILE_UP,
+  SACRIFICE,
 ];

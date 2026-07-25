@@ -54,7 +54,11 @@ export type ScaleMetric =
   | 'fogClouds'
   | 'minions'
   /** Cards this combatant has discarded since its turn began (the Crab's payoff). */
-  | 'cardsDiscardedThisTurn';
+  | 'cardsDiscardedThisTurn'
+  /** Cards this combatant has played since its turn began (Vial). */
+  | 'cardsPlayedThisTurn'
+  /** Minions of this combatant that have been discarded (Pile Up). */
+  | 'minionsDiscarded';
 
 /**
  * Result — the return type of every fallible pure stage (parser stages, move

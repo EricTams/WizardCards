@@ -57,6 +57,9 @@ export type GameEvent =
   | { readonly type: 'CloudsRemoved'; readonly target: EntityId; readonly count: number; readonly removed: readonly CloudType[] }
   | { readonly type: 'MaxCloudsIncreased'; readonly target: EntityId; readonly amount: number }
   | { readonly type: 'CloudsPlayTwiceSet'; readonly target: EntityId; readonly value: boolean }
+  | { readonly type: 'VenomRetainsSet'; readonly target: EntityId; readonly value: boolean }
+  | { readonly type: 'CardPlayed'; readonly owner: EntityId }
+  | { readonly type: 'MinionReplayed'; readonly owner: EntityId }
   | { readonly type: 'MinionSummoned'; readonly owner: EntityId; readonly cardId: CardId }
   | { readonly type: 'MinionDiscarded'; readonly owner: EntityId; readonly count: number }
   | { readonly type: 'PersistentAdded'; readonly target: EntityId; readonly cardId: CardId };
@@ -91,7 +94,7 @@ export function apply(state: GameState, action: Action): ApplyResult {
 
     case 'ClearTurnCounters':
       return {
-        state: mapCombatant(state, action.target, (c) => ({ ...c, discardedThisTurn: 0 })),
+        state: mapCombatant(state, action.target, (c) => ({ ...c, discardedThisTurn: 0, cardsPlayedThisTurn: 0 })),
         events: [{ type: 'TurnCountersCleared', target: action.target }],
       };
 
@@ -185,6 +188,29 @@ export function apply(state: GameState, action: Action): ApplyResult {
 
     case 'RemoveClouds':
       return removeClouds(state, action.target, action.count);
+
+    case 'GainScaled': {
+      const amount = action.multiplier * metricValue(state, action.self, action.per);
+      return gainResource(state, action.target, action.resource, amount);
+    }
+
+    case 'SetVenomRetains':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({ ...c, venomRetains: action.value })),
+        events: [{ type: 'VenomRetainsSet', target: action.target, value: action.value }],
+      };
+
+    case 'DiscardAllMinions':
+      return discardMinion(state, action.owner, findCombatant(state, action.owner)?.minions.length ?? 0);
+
+    case 'NoteCardPlayed':
+      return {
+        state: mapCombatant(state, action.owner, (c) => ({ ...c, cardsPlayedThisTurn: c.cardsPlayedThisTurn + 1 })),
+        events: [{ type: 'CardPlayed', owner: action.owner }],
+      };
+
+    case 'NoteMinionReplayed':
+      return { state, events: [{ type: 'MinionReplayed', owner: action.owner }] };
 
     case 'SetCloudsPlayTwice':
       return {
@@ -302,6 +328,10 @@ export function metricValue(state: GameState, id: EntityId, metric: ScaleMetric)
       return c.clouds.filter((x) => x === 'fog').length;
     case 'cardsDiscardedThisTurn':
       return c.discardedThisTurn;
+    case 'cardsPlayedThisTurn':
+      return c.cardsPlayedThisTurn;
+    case 'minionsDiscarded':
+      return c.minionsDiscarded;
     case 'minions':
       return c.minions.length;
   }
@@ -440,6 +470,29 @@ function createClouds(
   };
 }
 
+/** Add `amount` of one resource, with the same event each dedicated action emits. */
+function gainResource(
+  state: GameState,
+  target: EntityId,
+  resource: 'block' | 'shield' | 'energy' | 'power' | 'bravery' | 'poison',
+  amount: number,
+): ApplyResult {
+  const next = mapCombatant(state, target, (c) => ({ ...c, [resource]: c[resource] + amount }));
+  const event: GameEvent =
+    resource === 'block'
+      ? { type: 'BlockGained', target, amount }
+      : resource === 'shield'
+        ? { type: 'ShieldGained', target, amount }
+        : resource === 'energy'
+          ? { type: 'EnergyGained', target, amount }
+          : resource === 'power'
+            ? { type: 'PowerGained', target, amount }
+            : resource === 'bravery'
+              ? { type: 'BraveryGained', target, amount }
+              : { type: 'PoisonChanged', target, amount };
+  return { state: next, events: [event] };
+}
+
 const CLOUD_KINDS: readonly CloudType[] = ['lightning', 'storm', 'snow', 'fog'];
 
 /**
@@ -507,9 +560,18 @@ function venom(state: GameState, self: EntityId, target: EntityId): ApplyResult 
   const caster = findCombatant(state, self);
   const amount = caster?.poison ?? 0;
   const damaged = dealDamage(state, target, amount);
+  // Sacrifice / Sticky Poison let one Venom keep its Poison. The flag is spent
+  // either way, so it arms exactly one Venom.
+  const retains = caster?.venomRetains ?? false;
   return {
-    state: mapCombatant(damaged.state, self, (c) => ({ ...c, poison: 0 })),
-    events: [...damaged.events, { type: 'PoisonChanged', target: self, amount: -amount }],
+    state: mapCombatant(damaged.state, self, (c) => ({
+      ...c,
+      poison: retains ? c.poison : 0,
+      venomRetains: false,
+    })),
+    events: retains
+      ? damaged.events
+      : [...damaged.events, { type: 'PoisonChanged', target: self, amount: -amount }],
   };
 }
 
@@ -543,6 +605,7 @@ function discardMinion(state: GameState, owner: EntityId, count: number): ApplyR
     state: mapCombatant(state, owner, (c) => ({
       ...c,
       minions: c.minions.slice(0, Math.max(0, c.minions.length - count)),
+      minionsDiscarded: c.minionsDiscarded + removed,
     })),
     events: [{ type: 'MinionDiscarded', owner, count: removed }],
   };

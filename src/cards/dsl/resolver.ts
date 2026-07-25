@@ -49,10 +49,28 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       }
       return (ctx) => ({ type: 'DealDamage', target: ctx.target, amount });
     case 'gain':
+      if (effect.scale) {
+        const per = effect.scale.per;
+        const multiplier = effect.amount ?? 1;
+        const resource = effect.noun as 'block' | 'shield' | 'energy' | 'power' | 'bravery';
+        return (ctx) => ({ type: 'GainScaled', self: ctx.self, target: ctx.self, resource, per, multiplier });
+      }
       return resolveGain(effect, diagnostics);
     case 'heal':
       return (ctx) => ({ type: 'Heal', target: ctx.self, amount });
     case 'poison':
+      if (effect.scale) {
+        const per = effect.scale.per;
+        const multiplier = effect.amount ?? 1;
+        return (ctx) => ({
+          type: 'GainScaled',
+          self: ctx.self,
+          target: ctx.self,
+          resource: 'poison',
+          per,
+          multiplier,
+        });
+      }
       return (ctx) => ({ type: 'GainPoison', target: ctx.self, amount });
     case 'draw':
       return (ctx) => ({ type: 'DrawCards', owner: ctx.self, count: amount });
@@ -72,6 +90,8 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       return (ctx) => ({ type: 'FillCloudSlots', target: ctx.self, baseCap: CLOUD_CAP });
     case 'double':
       return (ctx) => ({ type: 'SetCloudsPlayTwice', target: ctx.self, value: true });
+    case 'retain':
+      return (ctx) => ({ type: 'SetVenomRetains', target: ctx.self, value: true });
     case 'remove':
       // "Remove all clouds" (Dissolve) vs a counted "Remove 3 clouds".
       if (effect.noun === 'allClouds') return (ctx) => ({ type: 'RemoveAllClouds', target: ctx.self });
@@ -82,6 +102,7 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
     case 'discard':
       // The noun picks the action: "discard 1 minion" (Wizard), "discard 1 card"
       // or "discard your hand" (Crab). The parser admits only these three.
+      if (effect.noun === 'allMinions') return (ctx) => ({ type: 'DiscardAllMinions', owner: ctx.self });
       if (effect.noun === 'minion') return (ctx) => ({ type: 'DiscardMinion', owner: ctx.self, count: amount });
       if (effect.noun === 'hand') return (ctx) => ({ type: 'DiscardHand', owner: ctx.self });
       return (ctx) => ({ type: 'DiscardCards', owner: ctx.self, count: amount });

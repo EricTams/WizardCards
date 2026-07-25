@@ -150,6 +150,7 @@ function parseEventPhrase(
     return cloudType ? { event: 'removeCloud', cloudType } : { event: 'removeCloud' };
   }
   if (has('unblocked') && has('damage')) return { event: 'dealUnblockedDamage' };
+  if ((has('minion') || has('minions')) && has('replayed')) return { event: 'minionReplayed' };
   if ((has('minion') || has('minions')) && (has('discarded') || has('discard')))
     return { event: 'discardMinion' };
 
@@ -201,6 +202,14 @@ function isClawSentence(sentence: Token[]): boolean {
 function isModifierSentence(sentence: Token[]): boolean {
   const first = sentence[0]?.value.toLowerCase();
   const second = sentence[1]?.value.toLowerCase();
+  // "Minions are replayed 1 additional time." — must check for `replayed`, not
+  // just the leading word, or the bare `Minion.` keyword gets swallowed here.
+  if (
+    (first === 'minions' || first === 'minion') &&
+    sentence.some((t) => t.type === 'word' && t.value.toLowerCase() === 'replayed')
+  ) {
+    return true;
+  }
   return !!first && CLOUD_TYPES[first] !== undefined && (second === 'clouds' || second === 'cloud');
 }
 
@@ -209,6 +218,10 @@ function parseModifier(sentence: Token[], diagnostics: Diagnostic[]): ModifierNo
   const span = { start: sentence[0]!.start, end: sentence[sentence.length - 1]!.end };
   const negated = words.includes('no') || words.includes('not') || words.includes('never') || words.includes('longer');
 
+  if ((words.includes('minions') || words.includes('minion')) && words.includes('replayed')) {
+    const numbers = sentence.filter((t) => t.type === 'number').map((t) => Number(t.value));
+    return { kind: 'Modifier', modifier: 'minionReplayBonus', amount: numbers[0] ?? 1, ...span };
+  }
   if (words.includes('discard') && negated) {
     return { kind: 'Modifier', modifier: 'suppressFogDiscard', ...span };
   }
@@ -230,13 +243,15 @@ function parseModifier(sentence: Token[], diagnostics: Diagnostic[]): ModifierNo
 function parseEffectStatement(clause: Token[], diagnostics: Diagnostic[]): EffectNode | null {
   const { target, rest } = extractTarget(clause);
 
-  // Scaling ("equal to your energy" / "3 for each unique cloud") is a `deal`-only
-  // feature for now; flag it clearly rather than silently dropping it elsewhere.
+  // Scaling ("equal to your energy" / "3 for each unique cloud") works on `deal`
+  // and on the resource-granting verbs; anywhere else it is a diagnostic rather
+  // than a silent miss.
   const scaled = rest.some((t) => t.type === 'word' && (t.value.toLowerCase() === 'equal' || t.value.toLowerCase() === 'each'));
   let effect: EffectNode | null;
   if (scaled) {
     const head = rest[0];
-    if (head?.type === 'word' && head.value.toLowerCase() === 'deal') {
+    const lead = head?.type === 'word' ? head.value.toLowerCase() : '';
+    if (lead === 'deal' || lead === 'gain' || lead === 'poison') {
       effect = parseScaledDeal(rest, diagnostics);
     } else {
       diagnostics.push(diag('Scaling ("for each", "equal to") is only supported on "deal" for now.', head ?? rest[0]!));
@@ -252,9 +267,20 @@ function parseEffectStatement(clause: Token[], diagnostics: Diagnostic[]): Effec
 
 const SCALE_RESOURCES = new Set<ScaleMetric>(['energy', 'poison', 'block', 'shield', 'defense', 'power', 'bravery']);
 
-/** Parse "Deal damage equal to your X" and "Deal N damage for each [unique] Y". */
+/**
+ * Parse "<verb> … equal to your X" / "<verb> N … for each Y". Shared by `deal`
+ * and the resource verbs, so the verb (and for `gain`, the resource noun) is
+ * taken from the statement rather than assumed to be damage.
+ */
 function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode | null {
   const head = group[0]!;
+  const verb = head.value.toLowerCase() as Verb;
+  const nounFor = (): string | undefined => {
+    if (verb === 'deal') return 'damage';
+    if (verb === 'poison') return 'poison';
+    const w = group.filter((t) => t.type === 'word').map((t) => singular(t.value.toLowerCase()));
+    return w.find((x) => GAIN_RESOURCES.has(x));
+  };
   const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
   const span = { start: head.start, end: group[group.length - 1]!.end };
 
@@ -264,12 +290,15 @@ function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode 
       diagnostics.push(diag('"equal to your …" needs a resource (energy, poison, block, shield, defense, power, bravery).', head));
       return null;
     }
-    return { kind: 'Effect', verb: 'deal', noun: 'damage', scale: { per: resource as ScaleMetric }, ...span };
+    const n1 = nounFor();
+    return { kind: 'Effect', verb, ...(n1 ? { noun: n1 } : {}), scale: { per: resource as ScaleMetric }, ...span };
   }
 
   // "for each …"
+  // "Poison for each card played this turn" omits the per-unit amount; 1 is the
+  // natural reading, matching how "equal to your X" means one-for-one.
   const numberTok = group.find((t) => t.type === 'number');
-  if (!numberTok) {
+  if (!numberTok && verb === 'deal') {
     diagnostics.push(diag('"… for each …" needs a per-unit amount, e.g. "Deal 3 damage for each cloud".', head));
     return null;
   }
@@ -278,7 +307,15 @@ function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode 
     diagnostics.push(diag('"for each …" needs cloud, unique cloud, minion, or card discarded this turn.', head));
     return null;
   }
-  return { kind: 'Effect', verb: 'deal', amount: Number(numberTok.value), noun: 'damage', scale: { per }, ...span };
+  const n2 = nounFor();
+  return {
+    kind: 'Effect',
+    verb,
+    amount: numberTok ? Number(numberTok.value) : 1,
+    ...(n2 ? { noun: n2 } : {}),
+    scale: { per },
+    ...span,
+  };
 }
 
 const TYPED_CLOUD_METRICS: Record<string, ScaleMetric> = {
@@ -289,12 +326,16 @@ const TYPED_CLOUD_METRICS: Record<string, ScaleMetric> = {
 };
 
 function countMetric(words: string[]): ScaleMetric | null {
-  if (words.includes('minion') || words.includes('minions')) return 'minions';
-  // "for each card discarded this turn" — checked before the bare cloud/minion
-  // counts because it is the only one qualified by a verb.
-  if (words.includes('discarded') && (words.includes('card') || words.includes('cards'))) {
-    return 'cardsDiscardedThisTurn';
-  }
+  // Qualified counts first — each is a *narrower* reading of a word that also
+  // matches a bare count below ("minion in your discard pile" vs "minion"), so
+  // testing the bare form first would always win and silently count the wrong
+  // thing.
+  const cards = words.includes('card') || words.includes('cards');
+  if (cards && words.includes('discarded')) return 'cardsDiscardedThisTurn';
+  if (cards && words.includes('played')) return 'cardsPlayedThisTurn';
+  const minions = words.includes('minion') || words.includes('minions');
+  if (minions && words.includes('discard')) return 'minionsDiscarded';
+  if (minions) return 'minions';
   if (words.includes('cloud') || words.includes('clouds')) {
     if (words.includes('unique')) return 'uniqueClouds';
     // "for each storm cloud" — a named type narrows the count to that kind.
@@ -398,6 +439,11 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       }
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
     }
+    case 'retain': {
+      // "Retain your poison" arms the next Venom to keep it.
+      const last = group[group.length - 1]!;
+      return { kind: 'Effect', verb: 'retain', noun: 'poison', ...span(head, last) };
+    }
     case 'double': {
       // Only "double your clouds next turn" (Solar Power) is understood today.
       const last = group[group.length - 1]!;
@@ -445,6 +491,9 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       const last = group[group.length - 1]!;
       if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'hand')) {
         return { kind: 'Effect', verb: 'discard', noun: 'hand', ...span(head, last) };
+      }
+      if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'all')) {
+        return { kind: 'Effect', verb: 'discard', noun: 'allMinions', ...span(head, last) };
       }
       // "Discard 1 card" (the Crab) and "Discard 1 minion" (the Wizard) share a
       // verb; the resolver picks the action from the noun.

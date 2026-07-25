@@ -83,8 +83,23 @@ describe('scaling grammar', () => {
     expect(effects('Deal 1 damage for each minion.')[0]).toMatchObject({ scale: { per: 'minions' } });
   });
 
-  it('rejects scaling on a non-deal verb', () => {
-    expect(parse('Gain 1 shield for each minion.').ok).toBe(false);
+  it('scales the resource verbs too, not just deal', () => {
+    expect(effects('Gain 1 shield for each minion.')[0]).toMatchObject({
+      verb: 'gain',
+      noun: 'shield',
+      scale: { per: 'minions' },
+    });
+    // No per-unit amount reads as one-for-one, like "equal to your X".
+    expect(effects('Poison for each card played this turn.')[0]).toMatchObject({
+      verb: 'poison',
+      amount: 1,
+      scale: { per: 'cardsPlayedThisTurn' },
+    });
+  });
+
+  it('still rejects scaling on a verb that has no scaled form', () => {
+    expect(parse('Draw 1 card for each minion.').ok).toBe(false);
+    expect(parse('Heal 1 for each cloud.').ok).toBe(false);
   });
 
   it('rejects "equal to your <unknown>"', () => {

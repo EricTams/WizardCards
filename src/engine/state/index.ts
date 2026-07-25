@@ -56,6 +56,19 @@ export interface Combatant {
    * ("deal 1 damage for each card discarded this turn"). Reset by `StartTurn`.
    */
   readonly discardedThisTurn: number;
+  /** Cards played since this combatant's turn began (Vial). Reset with the others. */
+  readonly cardsPlayedThisTurn: number;
+  /**
+   * How many of this combatant's minions have been discarded — the design's
+   * "minions in your Discard Pile" (Pile Up). A running total, since discarded
+   * minions are not kept as objects anywhere.
+   */
+  readonly minionsDiscarded: number;
+  /**
+   * Set by Sacrifice / Sticky Poison: the next Venom keeps the caster's Poison
+   * instead of spending it. Consumed by that Venom.
+   */
+  readonly venomRetains: boolean;
   /** Cloud tokens in play (the Cloud's mechanic). */
   readonly clouds: readonly CloudType[];
   /**
@@ -105,6 +118,9 @@ export function makeCombatant(
     power: 0,
     bravery: 0,
     discardedThisTurn: 0,
+    cardsPlayedThisTurn: 0,
+    minionsDiscarded: 0,
+    venomRetains: false,
     clouds: [],
     bonusMaxClouds: 0,
     cloudsPlayTwice: false,

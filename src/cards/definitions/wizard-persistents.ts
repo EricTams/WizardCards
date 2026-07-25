@@ -22,4 +22,18 @@ export const CONSUMING: CardDef = {
   text: 'When a minion is discarded, heal 1.',
 };
 
-export const WIZARD_PERSISTENTS: readonly CardDef[] = [ROT_AWAY, CONSUMING];
+export const PROTECT_THE_DRINKS: CardDef = {
+  id: cardId('wizard-protect-the-drinks'),
+  name: 'Protect the Drinks',
+  cost: 1,
+  text: 'Minions are replayed 1 additional time.',
+};
+
+export const JUGGLE: CardDef = {
+  id: cardId('wizard-juggle'),
+  name: 'Juggle',
+  cost: 1,
+  text: 'When a minion is replayed, gain 1 block.',
+};
+
+export const WIZARD_PERSISTENTS: readonly CardDef[] = [ROT_AWAY, CONSUMING, PROTECT_THE_DRINKS, JUGGLE];

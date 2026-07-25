@@ -34,6 +34,7 @@ export type Verb =
   | 'increase'
   | 'fill'
   | 'double'
+  | 'retain'
   // minion effects
   | 'discard'
   // bare keyword effects (no amount / noun)
@@ -68,6 +69,7 @@ export type TriggerEventKind =
   | 'removeCloud'
   | 'dealUnblockedDamage'
   | 'discardMinion'
+  | 'minionReplayed'
   | 'startTurn'
   | 'endTurn';
 
@@ -98,7 +100,7 @@ export interface TriggerNode {
  */
 export interface ModifierNode {
   readonly kind: 'Modifier';
-  readonly modifier: 'snowHealBonus' | 'suppressFogDiscard' | 'claw';
+  readonly modifier: 'snowHealBonus' | 'suppressFogDiscard' | 'claw' | 'minionReplayBonus';
   readonly amount?: number;
   readonly start: number;
   readonly end: number;

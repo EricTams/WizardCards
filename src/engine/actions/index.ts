@@ -215,6 +215,48 @@ export interface FillCloudSlots {
   readonly baseCap: number;
 }
 
+/**
+ * Gain `multiplier x metric(self)` of a resource, measured at reduce time — the
+ * `gain`/`poison` counterpart to DealDamageScaled ("gain 1 shield for each
+ * minion in your discard pile", "poison for each card played this turn").
+ */
+export interface GainScaled {
+  readonly type: 'GainScaled';
+  readonly self: EntityId;
+  readonly target: EntityId;
+  readonly resource: 'block' | 'shield' | 'energy' | 'power' | 'bravery' | 'poison';
+  readonly per: ScaleMetric;
+  readonly multiplier: number;
+}
+
+/** Arm (or clear) "the next Venom keeps your Poison" — Sacrifice, Sticky Poison. */
+export interface SetVenomRetains {
+  readonly type: 'SetVenomRetains';
+  readonly target: EntityId;
+  readonly value: boolean;
+}
+
+/** Discard every minion a combatant has in play (Explosion). */
+export interface DiscardAllMinions {
+  readonly type: 'DiscardAllMinions';
+  readonly owner: EntityId;
+}
+
+/**
+ * Bookkeeping actions that change one counter / raise one event, so that things
+ * the *cards layer* orchestrates (playing a card, replaying a minion) still
+ * reach the reducer as actions and show up in the event stream for triggers.
+ */
+export interface NoteCardPlayed {
+  readonly type: 'NoteCardPlayed';
+  readonly owner: EntityId;
+}
+
+export interface NoteMinionReplayed {
+  readonly type: 'NoteMinionReplayed';
+  readonly owner: EntityId;
+}
+
 /** Arm (or clear) "your clouds play twice next turn" — Solar Power. */
 export interface SetCloudsPlayTwice {
   readonly type: 'SetCloudsPlayTwice';
@@ -308,6 +350,11 @@ export type Action =
   | CreateRandomClouds
   | RemoveRandomClouds
   | FillCloudSlots
-  | SetCloudsPlayTwice;
+  | SetCloudsPlayTwice
+  | GainScaled
+  | SetVenomRetains
+  | DiscardAllMinions
+  | NoteCardPlayed
+  | NoteMinionReplayed;
 
 export type ActionType = Action['type'];

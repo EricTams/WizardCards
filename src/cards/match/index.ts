@@ -175,7 +175,21 @@ export function runTurnCascade(
   // Persistents are modelled as the player's (`activePersistents` reads the player).
   if (isPlayer) run(activePersistents(current).flatMap((p) => (p.onStartTurn ? p.onStartTurn(current) : [])));
   const actor = combatantOf(current, actorId);
-  if (actor) for (const minion of actor.minions.slice()) run(minionReplayActions(current, actorId, minion));
+  if (actor) {
+    // Protect the Drinks replays each minion extra times. The bonus is the
+    // player's (persistents are), so the enemy replays once as before.
+    const extra = isPlayer
+      ? activePersistents(current).reduce((n, p) => n + (p.minionReplayBonus ?? 0), 0)
+      : 0;
+    for (const minion of actor.minions.slice()) {
+      for (let i = 0; i < 1 + extra; i++) {
+        // Announce the replay first, so "when a minion is replayed" (Juggle)
+        // fires for each one — including the extra passes.
+        run([{ type: 'NoteMinionReplayed', owner: actorId }]);
+        run(minionReplayActions(current, actorId, minion));
+      }
+    }
+  }
 
   const draw = opts.draw ?? 0;
   if (draw > 0) run([{ type: 'DrawCards', owner: actorId, count: draw }]);

@@ -19,6 +19,8 @@ export interface PersistentBehavior {
   readonly onEndTurn?: (state: GameState) => Action[];
   readonly snowHealBonus?: number;
   readonly suppressFogDiscard?: boolean;
+  /** Protect the Drinks: each minion replays this many extra times per turn. */
+  readonly minionReplayBonus?: number;
 }
 
 export function compilePersistent(text: string): PersistentBehavior {
@@ -28,9 +30,11 @@ export function compilePersistent(text: string): PersistentBehavior {
 
   let snowHealBonus = 0;
   let suppressFogDiscard = false;
+  let minionReplayBonus = 0;
   for (const mod of modifiers) {
     if (mod.modifier === 'snowHealBonus') snowHealBonus += mod.amount ?? 1;
     if (mod.modifier === 'suppressFogDiscard') suppressFogDiscard = true;
+    if (mod.modifier === 'minionReplayBonus') minionReplayBonus += mod.amount ?? 1;
   }
 
   const reactive = triggers.filter((t) => t.event !== 'startTurn' && t.event !== 'endTurn');
@@ -49,6 +53,7 @@ export function compilePersistent(text: string): PersistentBehavior {
       : {}),
     ...(snowHealBonus !== 0 ? { snowHealBonus } : {}),
     ...(suppressFogDiscard ? { suppressFogDiscard: true } : {}),
+    ...(minionReplayBonus !== 0 ? { minionReplayBonus } : {}),
   };
 }
 
@@ -86,6 +91,8 @@ function firingCount(trigger: TriggerNode, state: GameState, event: GameEvent): 
       return event.type === 'DamageDealt' && event.unblocked > 0 && isEnemy(state, event.target) ? 1 : 0;
     case 'discardMinion':
       return event.type === 'MinionDiscarded' ? event.count : 0;
+    case 'minionReplayed':
+      return event.type === 'MinionReplayed' ? 1 : 0;
     default:
       return 0;
   }
@@ -112,6 +119,9 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
     case 'heal':
       return [{ type: 'Heal', target: self, amount }];
     case 'poison':
+      if (effect.scale) {
+        return [{ type: 'GainScaled', self, target: self, resource: 'poison', per: effect.scale.per, multiplier: effect.amount ?? 1 }];
+      }
       return [{ type: 'GainPoison', target: self, amount }];
     case 'draw':
       return [{ type: 'DrawCards', count: amount }];
@@ -122,6 +132,8 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
       return [{ type: 'FillCloudSlots', target: self, baseCap: CLOUD_CAP }];
     case 'double':
       return [{ type: 'SetCloudsPlayTwice', target: self, value: true }];
+    case 'retain':
+      return [{ type: 'SetVenomRetains', target: self, value: true }];
     case 'remove':
       // Mirrors the on-play resolver — see the note on `discard` below.
       if (effect.noun === 'allClouds') return [{ type: 'RemoveAllClouds', target: self }];
@@ -133,10 +145,15 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
       // Must mirror the on-play resolver's noun handling — before this, every
       // `discard` in a trigger became DiscardMinion, so "discard 1 card" and
       // "discard your hand" silently discarded minions instead.
+      if (effect.noun === 'allMinions') return [{ type: 'DiscardAllMinions', owner: self }];
       if (effect.noun === 'minion') return [{ type: 'DiscardMinion', owner: self, count: amount }];
       if (effect.noun === 'hand') return [{ type: 'DiscardHand', owner: self }];
       return [{ type: 'DiscardCards', owner: self, count: amount }];
     case 'gain':
+      if (effect.scale) {
+        const resource = effect.noun as 'block' | 'shield' | 'energy' | 'power' | 'bravery';
+        return [{ type: 'GainScaled', self, target: self, resource, per: effect.scale.per, multiplier: effect.amount ?? 1 }];
+      }
       return resolveGain(effect.noun, self, amount);
     default:
       return [];

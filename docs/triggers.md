@@ -49,6 +49,8 @@ Persistents react from the play area and minions replay from the board, but the 
 
 The distinction is load-bearing rather than cosmetic. Playing a card moves it to the discard pile through the very same event, so firing on `play` would play every Claw card **twice**; and the mulligan is a setup step, where a Claw card would otherwise resolve before turn 1. The same rule governs the `cardsDiscardedThisTurn` counter, which only `discard` increments.
 
+**Minion replay is announced.** Replaying a minion is orchestrated by the cards layer, not by an action, so it would otherwise be invisible to triggers. `runTurnCascade` runs a `NoteMinionReplayed` bookkeeping action before each pass, raising a `MinionReplayed` event that "when a minion is replayed" (Juggle) keys off — including the extra passes Protect the Drinks adds. `NoteCardPlayed` does the same job for the per-turn cards-played count.
+
 ### Phase — start / end of turn
 `startTurn` sequences: advance the turn → clear temporary block → fire each **cloud** (Lightning→energy, Snow→heal, Storm→damage a random enemy, Fog→draw) → run start-of-turn persistents (Summer) → **replay each minion** (its compiled text minus re-summoning itself) → draw. `endTurn` makes Fog clouds force a discard (unless Fall) and ends the turn. Each step resolves its own reactive cascade before the next.
 

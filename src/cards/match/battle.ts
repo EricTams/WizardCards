@@ -212,6 +212,9 @@ export function playFromHand(
   };
 
   run([{ type: 'SetEnergy', target: actorId, amount: actor.energy - card.cost }]);
+  // Counted before the card's own effects, so a card that scales off "cards
+  // played this turn" (Vial) includes itself — it is, after all, being played.
+  run([{ type: 'NoteCardPlayed', owner: actorId }]);
   run([{ type: 'MoveHandCardToDiscard', owner: actorId, index: handIndex }]);
   const compiled = compile(card.text);
   if (compiled.ok) {
