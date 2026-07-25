@@ -15,6 +15,7 @@
  */
 import { type CardId, type EntityId, entityId } from '@shared/index';
 import {
+  type CardInstance,
   initialState,
   makeCombatant,
   applyAll,
@@ -44,15 +45,23 @@ export interface CombatantExpect {
   readonly minions?: number;
 }
 
-export interface CardTestSetup {
-  readonly seed?: string;
-  /** Overrides on the player combatant (hp/resources/clouds/minions). */
-  readonly player?: Partial<Combatant>;
-  /** Overrides on the primary target combatant. */
-  readonly target?: Partial<Combatant>;
+/**
+ * A combatant's piles, named by card id rather than by copy. Fixtures care which
+ * *cards* are where, never which physical copy, so they stay readable while the
+ * real state holds CardInstances — `buildTestState` wraps them on the way in.
+ */
+type PileSetup = {
   readonly hand?: readonly CardId[];
   readonly drawPile?: readonly CardId[];
   readonly discardPile?: readonly CardId[];
+};
+
+export interface CardTestSetup extends PileSetup {
+  readonly seed?: string;
+  /** Overrides on the player combatant (hp/resources/clouds/minions). */
+  readonly player?: Omit<Partial<Combatant>, keyof PileSetup> & PileSetup;
+  /** Overrides on the primary target combatant. */
+  readonly target?: Omit<Partial<Combatant>, keyof PileSetup> & PileSetup;
 }
 
 export interface CardTestExpect {
@@ -84,24 +93,54 @@ export interface CardTestResult {
 }
 
 /** Build the sandbox GameState a card test plays inside. */
+/** Accept either bare ids (the common fixture shape) or ready-made instances. */
+/**
+ * Wrap card ids as a pile of instances — for tests and tools that build a
+ * Combatant directly rather than through `buildTestState`.
+ */
+export function pileOf(...ids: readonly CardId[]): CardInstance[] {
+  return ids.map((cardId, i) => ({ uid: i, cardId }));
+}
+
+/** Drop the id-named piles so the rest can be spread onto a real Combatant. */
+function withoutPiles(
+  o: (Omit<Partial<Combatant>, keyof PileSetup> & PileSetup) | undefined,
+): Omit<Partial<Combatant>, keyof PileSetup> {
+  if (!o) return {};
+  const rest = { ...o };
+  delete rest.hand;
+  delete rest.drawPile;
+  delete rest.discardPile;
+  return rest;
+}
+
+/** Wrap ids as instances. `base` keeps uids distinct across the piles. */
+function asInstances(pile: readonly CardId[] | undefined, base: number): CardInstance[] {
+  return (pile ?? []).map((cardId, i) => ({ uid: base + i, cardId }));
+}
+
 export function buildTestState(setup: CardTestSetup = {}): GameState {
   const base = initialState({ seed: setup.seed ?? 'card-test', deck: [] });
   const player = makeCombatant({
     name: 'Player',
     hp: 50,
     maxHp: 50,
-    ...setup.player,
+    ...withoutPiles(setup.player),
     id: TEST_SELF,
-    drawPile: setup.drawPile?.slice() ?? setup.player?.drawPile?.slice() ?? [],
-    hand: setup.hand?.slice() ?? setup.player?.hand?.slice() ?? [],
-    discardPile: setup.discardPile?.slice() ?? setup.player?.discardPile?.slice() ?? [],
+    // Fixtures name plain card ids; wrap them so tests never spell out copies.
+    drawPile: asInstances(setup.drawPile ?? setup.player?.drawPile, 0),
+    hand: asInstances(setup.hand ?? setup.player?.hand, 1000),
+    discardPile: asInstances(setup.discardPile ?? setup.player?.discardPile, 2000),
   });
   const target = makeCombatant({
     name: 'Target',
     hp: 50,
     maxHp: 50,
-    ...setup.target,
+    ...withoutPiles(setup.target),
     id: TEST_TARGET,
+    hand: asInstances(setup.target?.hand, 3000),
+    drawPile: asInstances(setup.target?.drawPile, 4000),
+    discardPile: asInstances(setup.target?.discardPile, 5000),
   });
   return {
     ...base,

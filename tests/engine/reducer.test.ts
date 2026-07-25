@@ -1,3 +1,4 @@
+import { pileOf } from '@cards/index';
 import { describe, it, expect } from 'vitest';
 import { initialState, apply, makeCombatant, type GameState } from '@engine/index';
 import { entityId, cardId, type CardId } from '@shared/index';
@@ -40,7 +41,7 @@ describe('reducer: apply', () => {
     const base = initialState({ seed: 's', deck: [] });
     const state: GameState = {
       ...base,
-      player: { ...base.player, drawPile: [], discardPile: [cardId('x'), cardId('y')] },
+      player: { ...base.player, drawPile: [], discardPile: pileOf(cardId('x'), cardId('y')) },
     };
     const result = apply(state, { type: 'DrawCards', count: 1 });
     expect(result.state.player.hand).toHaveLength(1);

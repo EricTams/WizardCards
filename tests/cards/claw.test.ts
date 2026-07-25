@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { buildTestState, playFromHand, confirmMulligan, startTurn, endTurn, TEST_SELF, TEST_TARGET } from '@cards/index';
+import { cardIdsOf } from '@engine/index';
+import {
+  buildTestState, playFromHand, confirmMulligan, startTurn, endTurn, pileOf, TEST_SELF, TEST_TARGET,
+} from '@cards/index';
 import { applyWithTriggers } from '@cards/match/index';
 import { hasClaw } from '@cards/match/claw';
 import {
   PINCH, LITTLE_SPLASH, HERMIT, LOCATOR, BOIL, QUICKSAND, REFRESH,
-  SAND_KICK, TENTACLES, CRAB_WALK, DRY_OUT,
+  SAND_KICK, TENTACLES, CRAB_WALK, DRY_OUT, DUNGEON_NESS, SKITTER, SNIP,
 } from '@cards/definitions/crab';
-import { EXOSKELETON, DECAPOD, EYESTALKS, PRAWN } from '@cards/definitions/crab-persistents';
+import { EXOSKELETON, DECAPOD, EYESTALKS, PRAWN, DECORATOR } from '@cards/definitions/crab-persistents';
 import type { CardId } from '@shared/index';
 
 const enemyHp = (s: ReturnType<typeof buildTestState>) => s.enemies[0]!.hp;
@@ -38,7 +41,7 @@ describe('Claw — plays for free when discarded', () => {
     expect(after.enemies[0]!.hp).toBe(26); // Pinch played itself from the discard
     expect(after.player.energy).toBe(0); // …and cost nothing
     expect(after.player.hand).toHaveLength(0);
-    expect(after.player.discardPile).toEqual([PINCH.id]);
+    expect(cardIdsOf(after.player.discardPile)).toEqual([PINCH.id]);
   });
 
   it('does NOT fire for a card without Claw', () => {
@@ -62,7 +65,7 @@ describe('Claw — plays for free when discarded', () => {
     };
     const { state: after } = confirmMulligan(state, [0]);
     expect(after.enemies[0]!.hp).toBe(30);
-    expect(after.player.discardPile).toContain(PINCH.id); // it was still discarded
+    expect(cardIdsOf(after.player.discardPile)).toContain(PINCH.id); // it was still discarded
   });
 
   it('fires however the discard was caused, and still fights for its owner', () => {
@@ -76,7 +79,7 @@ describe('Claw — plays for free when discarded', () => {
 
   it("an enemy Crab's Claw aims back at the player — reachable in Attract Mode", () => {
     const base = buildTestState({ player: { hp: 30, maxHp: 30 }, target: { hp: 30, maxHp: 30 } });
-    const state = { ...base, enemies: [{ ...base.enemies[0]!, hand: [PINCH.id] }] };
+    const state = { ...base, enemies: [{ ...base.enemies[0]!, hand: pileOf(PINCH.id) }] };
     const { state: after } = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_TARGET, count: 1 });
     expect(after.player.hp).toBe(26); // the enemy's Claw hit us
     expect(after.enemies[0]!.hp).toBe(30); // it did not hit itself
@@ -149,7 +152,7 @@ describe('cards discarded this turn', () => {
     const afterBoil = playFromHand(state, TEST_SELF, 3).state;
     expect(afterBoil.player.discardedThisTurn).toBe(3);
 
-    const withLocator = { ...afterBoil, player: { ...afterBoil.player, hand: [LOCATOR.id] as CardId[] } };
+    const withLocator = { ...afterBoil, player: { ...afterBoil.player, hand: pileOf(LOCATOR.id) } };
     const { state: after } = playFromHand(withLocator, TEST_SELF, 0);
     expect(after.enemies[0]!.hp).toBe(27); // 1 damage x 3 cards discarded
   });
@@ -181,7 +184,7 @@ describe('moving cards between piles', () => {
     });
     const { state: after } = playFromHand(state, TEST_SELF, 0);
     expect(after.enemies[0]!.hp).toBe(28);
-    expect(after.player.hand).toEqual([SAND_KICK.id]); // back in hand…
+    expect(cardIdsOf(after.player.hand)).toEqual([SAND_KICK.id]); // back in hand…
     expect(after.player.discardPile).toHaveLength(0); // …not left in the discard
   });
 
@@ -192,7 +195,7 @@ describe('moving cards between piles', () => {
     });
     const { state: after } = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 1 });
     expect(after.enemies[0]!.hp).toBe(28);
-    expect(after.player.hand).toEqual([SAND_KICK.id]);
+    expect(cardIdsOf(after.player.hand)).toEqual([SAND_KICK.id]);
   });
 
   it('Tentacles goes back into the draw pile instead of the discard', () => {
@@ -202,7 +205,7 @@ describe('moving cards between piles', () => {
     });
     const { state: after } = playFromHand(state, TEST_SELF, 0);
     expect(after.enemies[0]!.hp).toBe(26);
-    expect(after.player.drawPile).toContain(TENTACLES.id);
+    expect(cardIdsOf(after.player.drawPile)).toContain(TENTACLES.id);
     expect(after.player.drawPile).toHaveLength(3);
     expect(after.player.discardPile).toHaveLength(0);
   });
@@ -267,5 +270,77 @@ describe('the discard-counting persistents', () => {
       target: { hp: 40, maxHp: 40 },
     });
     expect(applyWithTriggers(noClaw, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state.enemies[0]!.hp).toBe(40);
+  });
+});
+
+describe('granted Claw — the per-copy mark', () => {
+  it('Dungeon-ness marks a card that had no Claw, and it then fires on discard', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [LITTLE_SPLASH.id, DUNGEON_NESS.id] },
+      target: { hp: 40, maxHp: 40 },
+    });
+    const marked = playFromHand(state, TEST_SELF, 1).state;
+    expect(marked.player.shield).toBe(3);
+    expect(marked.player.hand[0]!.claw).toBe(true); // Little Splash now carries it
+
+    // Discarding it plays it for free, which a plain Little Splash never does.
+    const after = applyWithTriggers(marked, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state;
+    expect(after.enemies[0]!.hp).toBe(32); // its 8 damage
+  });
+
+  it('marks the copy, not the card — an identical copy stays unmarked', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [LITTLE_SPLASH.id, LITTLE_SPLASH.id, DUNGEON_NESS.id] },
+      target: { hp: 40, maxHp: 40 },
+    });
+    const marked = playFromHand(state, TEST_SELF, 2).state;
+    expect(marked.player.hand.map((c) => c.claw === true)).toEqual([true, false]);
+  });
+
+  it('Skitter marks two, and its own printed Claw still works', () => {
+    const state = buildTestState({
+      player: { energy: 0, hand: [LITTLE_SPLASH.id, SNIP.id, SKITTER.id] },
+      target: { hp: 40, maxHp: 40 },
+    });
+    // Discard Skitter itself: printed Claw fires it, which marks the two below.
+    const after = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state;
+    expect(after.player.hand.map((c) => c.claw === true)).toEqual([true, true]);
+  });
+
+  it('the mark survives moving between piles', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [SAND_KICK.id, DUNGEON_NESS.id] },
+      target: { hp: 40, maxHp: 40 },
+    });
+    const marked = playFromHand(state, TEST_SELF, 1).state;
+    expect(marked.player.hand[0]!.claw).toBe(true);
+    // Sand Kick returns itself to hand; the granted mark must come back with it.
+    const played = playFromHand(marked, TEST_SELF, 0).state;
+    expect(played.player.hand[0]!.claw).toBe(true);
+  });
+
+  it('Decorator marks the top of the draw pile whenever the deck is shuffled', () => {
+    const state = buildTestState({
+      player: { persistents: [DECORATOR.id], drawPile: ['a', 'b', 'c', 'd'] as CardId[] },
+    });
+    const after = applyWithTriggers(state, { type: 'ShuffleDrawPile', owner: TEST_SELF }).state;
+    expect(after.player.drawPile[0]!.claw).toBe(true);
+    expect(after.player.drawPile.filter((c) => c.claw).length).toBe(1); // just the top
+  });
+
+  it('Crab Walk mills away the card Decorator just marked — shuffle, then cut', () => {
+    // Not a bug: Crab Walk shuffles (Decorator marks the new top) and then
+    // discards the top 3, which takes the freshly-marked card with them.
+    const state = buildTestState({
+      player: {
+        energy: 5,
+        persistents: [DECORATOR.id],
+        hand: [CRAB_WALK.id],
+        drawPile: ['a', 'b', 'c', 'd'] as CardId[],
+      },
+    });
+    const after = playFromHand(state, TEST_SELF, 0).state;
+    expect(after.player.drawPile[0]!.claw).toBeUndefined();
+    expect(after.player.discardPile.some((c) => c.claw === true)).toBe(true);
   });
 });

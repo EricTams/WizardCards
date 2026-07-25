@@ -275,6 +275,22 @@ export interface MoveDiscardToDrawPile {
   readonly count: number;
 }
 
+/**
+ * Grant Claw to `count` cards in hand (Dungeon-ness, Skitter). The mark lands on
+ * the *copies*, so it travels with them and is spent when they leave.
+ */
+export interface AddClawToHand {
+  readonly type: 'AddClawToHand';
+  readonly owner: EntityId;
+  readonly count: number;
+}
+
+/** Grant Claw to the top card of the draw pile (Decorator). */
+export interface AddClawToDrawTop {
+  readonly type: 'AddClawToDrawTop';
+  readonly owner: EntityId;
+}
+
 /** Discard every minion a combatant has in play (Explosion). */
 export interface DiscardAllMinions {
   readonly type: 'DiscardAllMinions';
@@ -399,6 +415,8 @@ export type Action =
   | ShuffleCardIntoDrawPile
   | ShuffleDrawPile
   | DiscardFromDrawPile
-  | MoveDiscardToDrawPile;
+  | MoveDiscardToDrawPile
+  | AddClawToHand
+  | AddClawToDrawTop;
 
 export type ActionType = Action['type'];

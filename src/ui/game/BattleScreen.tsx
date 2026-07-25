@@ -18,7 +18,7 @@ import {
   ENEMY_ID,
   type BattleOptions,
 } from '@cards/index';
-import type { Combatant, GameEvent, GameState, MinionState } from '@engine/index';
+import { cardIdsOf, type Combatant, type GameEvent, type GameState, type MinionState } from '@engine/index';
 import type { CardId, CloudType, EntityId } from '@shared/index';
 import { Sprite } from '@ui/game/Sprite';
 import { heroSprite, cloudSprite, cardArtUrl, CARD_ART_W, CARD_ART_H, SPRITE_CSS, CARD_POINTER } from '@ui/game/art';
@@ -318,7 +318,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   }
   function playCardAt(index: number) {
     if (!isPlayerTurn || overCap || !enemy) return;
-    const cardId = player.hand[index]!;
+    const cardId = player.hand[index]!.cardId;
     const card = getCard(cardId);
     if (!card || player.energy < card.cost) {
       setLog(`Not enough energy for ${card?.name ?? 'that'}.`);
@@ -335,7 +335,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   }
   async function resolvePlay(index: number, targetId: EntityId) {
     if (!isPlayerTurn) return;
-    const cardId = player.hand[index]!;
+    const cardId = player.hand[index]!.cardId;
     const card = getCard(cardId);
     if (!card) return;
     const r = playFromHand(state, PLAYER_ID, index, targetId);
@@ -490,7 +490,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
 
       {/* Hand */}
       <Hand
-        hand={player.hand}
+        hand={cardIdsOf(player.hand)}
         energy={player.energy}
         phase={state.phase}
         mullPicks={mullPicks}

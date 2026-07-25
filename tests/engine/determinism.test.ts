@@ -1,3 +1,4 @@
+import { pileOf } from '@cards/index';
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
 import { initialState, applyAll, type Action } from '@engine/index';
@@ -25,7 +26,7 @@ describe('engine determinism', () => {
     // Force the RNG-driven path: empty draw pile + full discard pile means the
     // next draw reshuffles, and the resulting order depends on the seed.
     const seeded = initialState({ seed: 'x', deck });
-    const base = { ...seeded, player: { ...seeded.player, drawPile: [], discardPile: deck } };
+    const base = { ...seeded, player: { ...seeded.player, drawPile: [], discardPile: pileOf(...deck) } };
     const actions: Action[] = [{ type: 'DrawCards', count: 10 }];
     const a = applyAll({ ...base, rng: initialState({ seed: 'seed-A', deck }).rng }, actions).state;
     const b = applyAll({ ...base, rng: initialState({ seed: 'seed-B', deck }).rng }, actions).state;

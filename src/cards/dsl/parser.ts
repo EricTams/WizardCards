@@ -153,6 +153,7 @@ function parseEventPhrase(
   if ((has('minion') || has('minions')) && has('replayed')) return { event: 'minionReplayed' };
   // Card discards. The Claw-qualified form is the narrower reading of the same
   // words, so it has to be tested first.
+  if (has('shuffle') || has('shuffled')) return { event: 'shuffleDeck' };
   if ((has('card') || has('cards')) && (has('discard') || has('discarded'))) {
     return has('claw') ? { event: 'discardClawCard' } : { event: 'discardCard' };
   }
@@ -453,6 +454,26 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
         return { kind: 'Effect', verb: 'remove', amount: n, noun: 'randomClouds', ...span(head, last) };
       }
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
+    }
+    case 'add': {
+      // "Add claw to 2 cards in your hand." / "…to the top card of your draw pile."
+      const last = group[group.length - 1]!;
+      const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
+      if (!words.includes('claw')) {
+        diagnostics.push(diag('Only "add claw to …" is supported.', head));
+        return null;
+      }
+      if (words.includes('draw')) {
+        return { kind: 'Effect', verb: 'add', noun: 'clawDrawTop', ...span(head, last) };
+      }
+      const numberTok = group.find((t) => t.type === 'number');
+      return {
+        kind: 'Effect',
+        verb: 'add',
+        amount: numberTok ? Number(numberTok.value) : 1,
+        noun: 'clawHand',
+        ...span(head, last),
+      };
     }
     case 'return': {
       // "Return this card to your hand." — always the card being played.

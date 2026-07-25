@@ -44,9 +44,12 @@ export function clawTriggers(state: GameState, event: GameEvent): Action[] {
   // way a minion's replay does: at the owner's first opponent.
   const target = opponentsOf(state, event.owner)[0]?.id ?? event.owner;
 
-  return event.cards.flatMap((cardId) => {
+  // Walk the copies, not the ids: Claw can be printed on the card OR granted to
+  // one particular copy (Dungeon-ness, Skitter, Decorator).
+  return event.instances.flatMap((instance) => {
+    const cardId = instance.cardId;
     const card = getCard(cardId);
-    if (!card || !hasClaw(card)) return [];
+    if (!card || !(instance.claw === true || hasClaw(card))) return [];
     const compiled = compile(card.text);
     if (!compiled.ok) return [];
     const ctx: PlayContext = { self: event.owner, target, sourceCard: cardId };

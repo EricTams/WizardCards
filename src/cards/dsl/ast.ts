@@ -39,6 +39,7 @@ export type Verb =
   | 'return'
   | 'shuffle'
   | 'move'
+  | 'add'
   // minion effects
   | 'discard'
   // bare keyword effects (no amount / noun)
@@ -76,6 +77,7 @@ export type TriggerEventKind =
   | 'minionReplayed'
   | 'discardCard'
   | 'discardClawCard'
+  | 'shuffleDeck'
   | 'startTurn'
   | 'endTurn';
 

@@ -38,6 +38,7 @@ retain  "your poison"
 return  "this card to your hand"
 shuffle ("this card into your draw pile" | "your draw pile")
 move    <number> "card from your discard pile to your draw pile"
+add     "claw to" <number> "cards in your hand" | add "claw to the top card of your draw pile"
 "venom" | "drink" | "minion"       bare keyword effects (no number/noun)
 ```
 
@@ -67,6 +68,8 @@ move    <number> "card from your discard pile to your draw pile"
 | `Shuffle your draw pile.`  | `{ verb:'shuffle', noun:'drawPile' }`                | `ShuffleDrawPile(self)`                    |
 | `Discard 3 cards from your draw pile.` | `{ verb:'discard', amount:3, noun:'drawPile' }` | `DiscardFromDrawPile(self, 3)`     |
 | `Move 1 card from your discard pile to your draw pile.` | `{ verb:'move', amount:1, noun:'discardToDraw' }` | `MoveDiscardToDrawPile(self, 1)` |
+| `Add claw to 2 cards in your hand.` | `{ verb:'add', amount:2, noun:'clawHand' }`   | `AddClawToHand(self, 2)`                   |
+| `Add claw to the top card of your draw pile.` | `{ verb:'add', noun:'clawDrawTop' }` | `AddClawToDrawTop(self)`             |
 | `Venom.`                   | `{ verb:'venom' }`                                  | `Venom(self, target)`                      |
 | `Drink.`                   | `{ verb:'drink' }`                                  | `Drink(self)`                              |
 | `Minion.`                  | `{ verb:'minion' }`                                 | `SummonMinion(self, sourceCard)`           |
@@ -94,6 +97,7 @@ Parsing has two levels: text splits into **sentences** on `.`/`;`, and each sent
 | `When a minion is replayed, …`                      | `{ event: 'minionReplayed' }`                             |
 | `When you discard a card, …`                        | `{ event: 'discardCard' }`                                |
 | `When you discard a card with claw, …`              | `{ event: 'discardClawCard' }`                            |
+| `When you shuffle your deck, …`                     | `{ event: 'shuffleDeck' }`                                |
 | `At the start of your turn, …`                      | `{ event: 'startTurn' }`                                  |
 | `At the end of your turn, …`                        | `{ event: 'endTurn' }`                                    |
 
@@ -102,6 +106,12 @@ The when-phrase is matched by keywords, so wording is forgiving. A reactive trig
 **Conditions** — an optional gate, in four flavours: `over N` / `more than N` are **strict** (`op: 'gt'`), `N or more` **inclusive** (`gte`), `fewer than N` strict (`lt`), `N or fewer` inclusive (`lte`) — the `or` is what distinguishes each pair. Beyond the resources, a condition can gate on `hand` (cards in hand → `handSize`) and `discarded` (this turn's discard count). E.g. `…, if you have over 3 energy, …` → `{ resource: 'energy', op: 'gt', amount: 3 }`, and `…, if you have 5 or more block, …` → `{ resource: 'block', op: 'gte', amount: 5 }`.
 
 **Random clouds.** A `random` cloud type carries no `cloudType` — the reducer draws one through `state.rng`, so the same seed reproduces the same weather and the action log stays the source of truth. `CreateRandomClouds` emits one `CloudsCreated` per cloud rather than one batched event, since the types differ and "whenever you create a cloud" fires per cloud. `FillCloudSlots` is handed `CLOUD_CAP` as its `baseCap` because the limit is a cards-layer rule; the engine adds the combatant's own bonus.
+
+**Cards are copies, not ids.** Piles hold `CardInstance` — `{ uid, cardId, claw? }` — because a *copy* can carry state its card does not. Granting Claw (Dungeon-ness, Skitter, Decorator) marks one copy, so a second copy of the same card in the same hand stays unmarked, and the mark rides along as the copy moves between piles. `uid` comes from `GameState.idSeq`, keeping identity deterministic across a replay.
+
+Two conveniences keep this from leaking everywhere: **events still carry plain `CardId[]`** (with an extra `instances` field on `CardsDiscarded`, since a granted Claw is invisible in an id), and **test fixtures still name piles by card id** — `buildTestState` wraps them, and `pileOf(...)` does the same for tests that build a combatant directly.
+
+Granting is deterministic rather than chosen: with no UI for "choose a card", it marks the leftmost unmarked copies. It cannot skip cards that already have Claw *printed*, because that lives in the card language and the engine deliberately knows nothing about card text.
 
 **Pile movement starts from the discard.** A card's own effects resolve *after* playing has already moved it to the discard pile, so "put this card back into your hand" (Sand Kick) and "shuffle this into your draw pile" (Tentacles) are moves out of the discard, keyed by `ctx.sourceCard`. Milling (`Discard N cards from your draw pile`) raises `CardsMilled`, **not** `CardsDiscarded` — those cards never touched a hand, so they must not set off Claw or count toward the turn's discard total.
 

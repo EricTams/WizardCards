@@ -47,4 +47,18 @@ export const PRAWN: CardDef = {
   text: 'When you discard a card with claw, deal 3 damage.',
 };
 
-export const CRAB_PERSISTENTS: readonly CardDef[] = [CRAB_TRAP, EXOSKELETON, DECAPOD, EYESTALKS, PRAWN];
+export const DECORATOR: CardDef = {
+  id: cardId('crab-decorator'),
+  name: 'Decorator',
+  cost: 1,
+  text: 'When you shuffle your deck, add claw to the top card of your draw pile.',
+};
+
+export const CRAB_PERSISTENTS: readonly CardDef[] = [
+  CRAB_TRAP,
+  EXOSKELETON,
+  DECAPOD,
+  EYESTALKS,
+  PRAWN,
+  DECORATOR,
+];

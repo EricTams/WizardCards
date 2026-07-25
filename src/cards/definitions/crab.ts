@@ -202,6 +202,20 @@ export const DRY_OUT: CardDef = {
   text: 'Gain 4 shields. Move 1 card from your discard pile to your draw pile.',
 };
 
+export const DUNGEON_NESS: CardDef = {
+  id: cardId('crab-dungeon-ness'),
+  name: 'Dungeon-ness',
+  cost: 1,
+  text: 'Gain 3 shields. Add claw to 1 card in your hand.',
+};
+
+export const SKITTER: CardDef = {
+  id: cardId('crab-skitter'),
+  name: 'Skitter',
+  cost: 1,
+  text: 'Claw. Add claw to 2 cards in your hand.',
+};
+
 /** The pool a Crab deck is drawn from. */
 export const CRAB_CARDS: readonly CardDef[] = [
   LITTLE_SPLASH,
@@ -229,4 +243,6 @@ export const CRAB_CARDS: readonly CardDef[] = [
   TENTACLES,
   CRAB_WALK,
   DRY_OUT,
+  DUNGEON_NESS,
+  SKITTER,
 ];

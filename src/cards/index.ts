@@ -31,7 +31,7 @@ export type {
   CardTestFailure,
   CardTestResult,
 } from '@cards/testing';
-export { runCardTest, buildTestState, snapshotExpect, TEST_SELF, TEST_TARGET } from '@cards/testing';
+export { runCardTest, buildTestState, pileOf, snapshotExpect, TEST_SELF, TEST_TARGET } from '@cards/testing';
 export { CARD_TESTS, testsForCard } from '@cards/card-tests';
 
 export type { RunResult } from '@cards/match/index';

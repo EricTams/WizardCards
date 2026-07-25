@@ -19,8 +19,10 @@ import {
   CLOUD_CAP,
   type BattleOptions,
 } from '@cards/index';
+import { pileOf } from '@cards/index';
+import { cardIdsOf } from '@engine/index';
 import { apply, initialState, makeCombatant, type Combatant, type GameState } from '@engine/index';
-import { cardId, entityId, type EntityId } from '@shared/index';
+import { cardId, entityId, type CardId, type EntityId } from '@shared/index';
 import { SHINE, CRISSCROSS, RAIN, HURRICANE } from '@cards/definitions/cloud';
 
 const OPTS: BattleOptions = { character: 'cloud', relicId: 'old-shield', seed: 'battle-1' };
@@ -84,11 +86,28 @@ describe('battle setup', () => {
   });
 });
 
+/** Combatant overrides whose piles are given as card ids. */
+type CraftOver = Omit<Partial<Combatant>, 'hand' | 'drawPile' | 'discardPile'> & {
+  hand?: readonly CardId[];
+  drawPile?: readonly CardId[];
+  discardPile?: readonly CardId[];
+};
+
 /** Build a controlled mid-battle state (bypassing the random opening). */
-function craft(player: Partial<Combatant>, enemy: Partial<Combatant>): GameState {
+function craft(player: CraftOver, enemy: CraftOver): GameState {
   const base = initialState({ seed: 'craft', deck: [] });
-  const mk = (id: EntityId, name: string, o: Partial<Combatant>): Combatant =>
-    makeCombatant({ ...o, id, name, hp: o.hp ?? 20, maxHp: o.maxHp ?? 20 });
+  // Piles are named by card id here, as in the other fixtures.
+  const mk = (id: EntityId, name: string, o: CraftOver): Combatant =>
+    makeCombatant({
+      ...o,
+      id,
+      name,
+      hp: o.hp ?? 20,
+      maxHp: o.maxHp ?? 20,
+      hand: pileOf(...(o.hand ?? [])),
+      drawPile: pileOf(...(o.drawPile ?? [])),
+      discardPile: pileOf(...(o.discardPile ?? [])),
+    });
   return {
     ...base,
     phase: 'playerTurn',
@@ -105,7 +124,7 @@ describe('playing cards', () => {
     expect(after.enemies[0]!.hp).toBe(6); // Shine deals 6
     expect(after.player.energy).toBe(0);
     expect(after.player.hand).toHaveLength(0);
-    expect(after.player.discardPile).toContain(SHINE.id);
+    expect(cardIdsOf(after.player.discardPile)).toContain(SHINE.id);
   });
 
   it('refuses a card the actor cannot afford', () => {
@@ -140,7 +159,7 @@ describe('ending the turn', () => {
 });
 
 describe('random enemy AI (enemyPlayOne)', () => {
-  const enemyTurn = (over: Partial<Combatant>): GameState => ({
+  const enemyTurn = (over: CraftOver): GameState => ({
     ...craft({ hp: 20 }, over),
     phase: 'enemyTurn',
   });
@@ -207,7 +226,7 @@ describe('minions as attack targets', () => {
     const base: GameState = {
       ...withMinion(),
       phase: 'enemyTurn',
-      enemies: [makeCombatant({ id: ENEMY_ID, name: 'E', hp: 20, maxHp: 20, energy: 1, hand: [SHINE.id] })],
+      enemies: [makeCombatant({ id: ENEMY_ID, name: 'E', hp: 20, maxHp: 20, energy: 1, hand: pileOf(SHINE.id) })],
     };
     let killedMinion = 0;
     let hitHero = 0;

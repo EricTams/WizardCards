@@ -23,7 +23,7 @@ import {
   type CardTestResult,
   type Token,
 } from '@cards/index';
-import { applyAll, type Action, type Combatant, type GameState } from '@engine/index';
+import { applyAll, cardIdsOf, type Action, type Combatant, type GameState } from '@engine/index';
 import { cardId, type EntityId } from '@shared/index';
 import {
   loadOverrides,
@@ -108,7 +108,8 @@ export function CardLab() {
   /** Snapshot the current arena as a test setup for the runner's single target. */
   function captureSetup(): CardTestSetup {
     const enemy = arena.enemies.find((e) => e.id === effectiveTarget) ?? arena.enemies[0];
-    const pick = (c: Combatant): Partial<Combatant> => ({
+    // Only the scalar/board fields — the piles are captured as ids below.
+    const pick = (c: Combatant) => ({
       hp: c.hp,
       maxHp: c.maxHp,
       block: c.block,
@@ -123,9 +124,10 @@ export function CardLab() {
     return {
       player: pick(arena.player),
       ...(enemy ? { target: pick(enemy) } : {}),
-      hand: arena.player.hand,
-      drawPile: arena.player.drawPile,
-      discardPile: arena.player.discardPile,
+      // Fixtures record card ids, not the individual copies in play.
+      hand: cardIdsOf(arena.player.hand),
+      drawPile: cardIdsOf(arena.player.drawPile),
+      discardPile: cardIdsOf(arena.player.discardPile),
     };
   }
 

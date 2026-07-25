@@ -21,6 +21,21 @@ import { seedRng, type RngState } from '@engine/rng/index';
  */
 export type Phase = 'setup' | 'mulligan' | 'playerTurn' | 'enemyTurn' | 'won' | 'lost';
 
+/**
+ * One physical copy of a card, as it sits in a pile.
+ *
+ * Piles hold these rather than bare CardIds because a *copy* can carry state its
+ * card does not: the Crab grants Claw to a specific card in your hand, and only
+ * that copy gains it. `uid` is minted from `GameState.idSeq`, so identity is
+ * deterministic and survives a replay.
+ */
+export interface CardInstance {
+  readonly uid: number;
+  readonly cardId: CardId;
+  /** Granted by Dungeon-ness / Skitter / Decorator — this copy only. */
+  readonly claw?: boolean;
+}
+
 /** A summoned minion in play. References the card it was summoned from. */
 export interface MinionState {
   /** Unique instance id, minted deterministically from `GameState.idSeq`. */
@@ -96,10 +111,10 @@ export interface Combatant {
    * the model the design's symmetric/multiplayer play needs. Ordered lists of
    * CardIds referencing the card registry.
    */
-  readonly drawPile: readonly CardId[];
-  readonly hand: readonly CardId[];
-  readonly discardPile: readonly CardId[];
-  readonly exhaustPile: readonly CardId[];
+  readonly drawPile: readonly CardInstance[];
+  readonly hand: readonly CardInstance[];
+  readonly discardPile: readonly CardInstance[];
+  readonly exhaustPile: readonly CardInstance[];
 }
 
 /**
@@ -149,6 +164,24 @@ export interface GameState {
   readonly enemies: readonly Combatant[];
 }
 
+/** The card ids in a pile, in order — for callers that don't care about copies. */
+export function cardIdsOf(pile: readonly CardInstance[]): CardId[] {
+  return pile.map((c) => c.cardId);
+}
+
+/**
+ * Wrap card ids as fresh instances, numbering them from `idSeq`. Returns the
+ * next `idSeq` so the caller can thread it back into GameState — uids stay
+ * unique and deterministic across a whole battle.
+ */
+export function instancesOf(
+  ids: readonly CardId[],
+  idSeq: number,
+): { cards: CardInstance[]; idSeq: number } {
+  const cards = ids.map((cardId, i) => ({ uid: idSeq + i, cardId }));
+  return { cards, idSeq: idSeq + ids.length };
+}
+
 export interface NewGameOptions {
   readonly seed: string | number;
   readonly deck: readonly CardId[];
@@ -159,15 +192,15 @@ export function initialState(opts: NewGameOptions): GameState {
   return {
     version: 1,
     rng: seedRng(opts.seed),
-    idSeq: 0,
     phase: 'setup',
     turn: 0,
+    idSeq: opts.deck.length,
     player: makeCombatant({
       id: 'player' as EntityId,
       name: 'Player',
       hp: 50,
       maxHp: 50,
-      drawPile: opts.deck.slice(),
+      drawPile: instancesOf(opts.deck, 0).cards,
     }),
     enemies: [],
   };

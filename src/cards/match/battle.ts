@@ -21,6 +21,7 @@ import {
   type Combatant,
   type GameEvent,
   type GameState,
+  instancesOf,
   type RngState,
 } from '@engine/index';
 import { entityId, type CardId, type EntityId } from '@shared/index';
@@ -131,6 +132,11 @@ export function newBattle(opts: BattleOptions): GameState {
   const eDeck = eChar ? { value: eBuilt.deck, state: eBuilt.rng } : shuffle(eBuilt.deck, rng);
   rng = eDeck.state;
 
+  // Wrap both decks as card *instances*, numbering them from a shared counter so
+  // every copy in the battle has a unique, deterministic uid.
+  const pInst = instancesOf(pDeck.deck, 0);
+  const eInst = instancesOf(eDeck.value, pInst.idSeq);
+
   const bonusHp = relic?.bonusMaxHp ?? 0;
   const player = makeCombatant({
     id: PLAYER_ID,
@@ -139,7 +145,7 @@ export function newBattle(opts: BattleOptions): GameState {
     hp: BASE_MAX_HP + bonusHp,
     maxHp: BASE_MAX_HP + bonusHp,
     energy: BASE_ENERGY,
-    drawPile: pDeck.deck,
+    drawPile: pInst.cards,
   });
   const enemy = makeCombatant({
     id: ENEMY_ID,
@@ -148,10 +154,10 @@ export function newBattle(opts: BattleOptions): GameState {
     hp: BASE_MAX_HP,
     maxHp: BASE_MAX_HP,
     energy: BASE_ENERGY,
-    drawPile: eDeck.value,
+    drawPile: eInst.cards,
   });
 
-  let state: GameState = { ...base, rng, phase: 'setup', turn: 0, player, enemies: [enemy] };
+  let state: GameState = { ...base, rng, idSeq: eInst.idSeq, phase: 'setup', turn: 0, player, enemies: [enemy] };
 
   if (relic?.onCombatStart) state = runWithTriggers(state, relic.onCombatStart(player.id)).state;
 
@@ -198,7 +204,8 @@ export function playFromHand(
 ): RunResult {
   if (state.phase === 'won' || state.phase === 'lost') return { state, events: [] };
   const actor = combatantOf(state, actorId);
-  const cardId = actor?.hand[handIndex];
+  const instance = actor?.hand[handIndex];
+  const cardId = instance?.cardId;
   const card = cardId ? getCard(cardId) : undefined;
   if (!actor || !cardId || !card || actor.energy < card.cost) return { state, events: [] };
 
@@ -259,7 +266,7 @@ export function capClouds(state: GameState, ownerId: EntityId): RunResult {
 function validPlays(actor: Combatant): number[] {
   const idxs: number[] = [];
   for (let i = 0; i < actor.hand.length; i++) {
-    const card = getCard(actor.hand[i]!);
+    const card = getCard(actor.hand[i]!.cardId);
     if (card && actor.energy >= card.cost) idxs.push(i);
   }
   return idxs;
@@ -290,7 +297,7 @@ export function aiPlayOne(state: GameState, actorId: EntityId): EnemyPlay | null
 
   const draw = nextInt(state.rng, 0, valid.length - 1);
   const index = valid[draw.value]!;
-  const cardId = actor.hand[index]!;
+  const cardId = actor.hand[index]!.cardId;
   // Choose a target at random among the opponent's hero and its minions — a
   // minion soaks the whole attack (and dies), so spreading fire makes minions
   // matter. Only affects the card's damage; self-buffs still hit the caster.

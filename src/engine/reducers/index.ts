@@ -13,7 +13,8 @@
  */
 import type { CardId, CloudType, EntityId, ScaleMetric } from '@shared/index';
 import { entityId } from '@shared/index';
-import type { Combatant, GameState, MinionState, Phase } from '@engine/state/index';
+import type { CardInstance, Combatant, GameState, MinionState, Phase } from '@engine/state/index';
+import { cardIdsOf } from '@engine/state/index';
 import type { Action } from '@engine/actions/index';
 import { nextInt, shuffle } from '@engine/rng/index';
 
@@ -36,6 +37,12 @@ export type GameEvent =
       readonly type: 'CardsDiscarded';
       readonly owner: EntityId;
       readonly cards: readonly CardId[];
+      /**
+       * The copies themselves. `cards` stays the plain id list every existing
+       * consumer reads; this carries the per-copy marks a trigger may need —
+       * a granted Claw belongs to one copy, and the id alone can't show it.
+       */
+      readonly instances: readonly CardInstance[];
       readonly reason: DiscardReason;
     }
   | { readonly type: 'TurnCountersCleared'; readonly target: EntityId }
@@ -45,6 +52,7 @@ export type GameEvent =
   /** Cards moved discard -> draw pile. */
   | { readonly type: 'CardsRecovered'; readonly owner: EntityId; readonly cards: readonly CardId[] }
   | { readonly type: 'CardReturnedToHand'; readonly owner: EntityId; readonly cardId: CardId }
+  | { readonly type: 'ClawGranted'; readonly owner: EntityId; readonly cards: readonly CardId[] }
   | { readonly type: 'EnergySet'; readonly target: EntityId; readonly amount: number }
   // `unblocked` is the portion that got past block+shield — what triggers like
   // Rot Away ("whenever you deal unblocked damage") key off.
@@ -223,7 +231,7 @@ export function apply(state: GameState, action: Action): ApplyResult {
 
     case 'DiscardFromDrawPile': {
       const c = findCombatant(state, action.owner);
-      if (!c) return { state, events: [{ type: 'CardsDiscarded', owner: action.owner, cards: [], reason: 'discard' }] };
+      if (!c) return { state, events: [{ type: 'CardsDiscarded', owner: action.owner, cards: [], instances: [], reason: 'discard' }] };
       const n = Math.min(Math.max(0, action.count), c.drawPile.length);
       const taken = c.drawPile.slice(0, n);
       return {
@@ -234,7 +242,7 @@ export function apply(state: GameState, action: Action): ApplyResult {
         })),
         // These never touched a hand, so they are not a hand-discard: Claw and
         // the per-turn discard count both key off cards leaving the HAND.
-        events: [{ type: 'CardsMilled', owner: action.owner, cards: taken }],
+        events: [{ type: 'CardsMilled', owner: action.owner, cards: cardIdsOf(taken) }],
       };
     }
 
@@ -254,7 +262,42 @@ export function apply(state: GameState, action: Action): ApplyResult {
           })),
           rng: sh.state,
         },
-        events: [{ type: 'CardsRecovered', owner: action.owner, cards: moved }],
+        events: [{ type: 'CardsRecovered', owner: action.owner, cards: cardIdsOf(moved) }],
+      };
+    }
+
+    case 'AddClawToHand': {
+      // No UI for "choose a card", so it grants to the leftmost unmarked copies
+      // — deterministic and replayable. It can't skip cards that already have
+      // Claw from their *text*: that lives in the card language, which the
+      // engine deliberately knows nothing about. Re-marking one is harmless.
+      const c = findCombatant(state, action.owner);
+      if (!c) return { state, events: [] };
+      let left = Math.max(0, action.count);
+      const granted: CardId[] = [];
+      const hand = c.hand.map((inst) => {
+        if (left <= 0 || inst.claw) return inst;
+        left -= 1;
+        granted.push(inst.cardId);
+        return { ...inst, claw: true };
+      });
+      if (granted.length === 0) return { state, events: [] };
+      return {
+        state: mapCombatant(state, action.owner, (cc) => ({ ...cc, hand })),
+        events: [{ type: 'ClawGranted', owner: action.owner, cards: granted }],
+      };
+    }
+
+    case 'AddClawToDrawTop': {
+      const c = findCombatant(state, action.owner);
+      const top = c?.drawPile[0];
+      if (!c || !top || top.claw) return { state, events: [] };
+      return {
+        state: mapCombatant(state, action.owner, (cc) => ({
+          ...cc,
+          drawPile: [{ ...top, claw: true }, ...cc.drawPile.slice(1)],
+        })),
+        events: [{ type: 'ClawGranted', owner: action.owner, cards: [top.cardId] }],
       };
     }
 
@@ -403,7 +446,7 @@ function drawCards(state: GameState, owner: EntityId, count: number): ApplyResul
   let discardPile = c.discardPile.slice();
   const hand = c.hand.slice();
   let rng = state.rng;
-  const drawn: CardId[] = [];
+  const drawn: CardInstance[] = [];
   const events: GameEvent[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -420,7 +463,7 @@ function drawCards(state: GameState, owner: EntityId, count: number): ApplyResul
     drawn.push(card);
   }
 
-  events.push({ type: 'CardsDrawn', owner, cards: drawn });
+  events.push({ type: 'CardsDrawn', owner, cards: cardIdsOf(drawn) });
   return {
     state: { ...mapCombatant(state, owner, (cc) => ({ ...cc, drawPile, hand, discardPile })), rng },
     events,
@@ -476,9 +519,9 @@ function dealDamageToRandomEnemy(state: GameState, self: EntityId, amount: numbe
 
 function discardCards(state: GameState, owner: EntityId, count: number): ApplyResult {
   const c = findCombatant(state, owner);
-  if (!c) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], reason: 'discard' }] };
+  if (!c) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], instances: [], reason: 'discard' }] };
   const n = Math.min(Math.max(0, count), c.hand.length);
-  if (n === 0) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], reason: 'discard' }] };
+  if (n === 0) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], instances: [], reason: 'discard' }] };
   const discarded = c.hand.slice(c.hand.length - n);
   return {
     state: mapCombatant(state, owner, (cc) => ({
@@ -487,7 +530,7 @@ function discardCards(state: GameState, owner: EntityId, count: number): ApplyRe
       discardPile: [...cc.discardPile, ...discarded],
       discardedThisTurn: cc.discardedThisTurn + n,
     })),
-    events: [{ type: 'CardsDiscarded', owner, cards: discarded, reason: 'discard' }],
+    events: [{ type: 'CardsDiscarded', owner, cards: cardIdsOf(discarded), instances: discarded, reason: 'discard' }],
   };
 }
 
@@ -499,7 +542,7 @@ function moveHandCardToDiscard(
 ): ApplyResult {
   const c = findCombatant(state, owner);
   if (!c || index < 0 || index >= c.hand.length) {
-    return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], reason }] };
+    return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], instances: [], reason }] };
   }
   const card = c.hand[index]!;
   return {
@@ -511,7 +554,7 @@ function moveHandCardToDiscard(
       // mulliganed is not discarded. Counting the play would also let "for each
       // card discarded this turn" read the very card that is asking.
     })),
-    events: [{ type: 'CardsDiscarded', owner, cards: [card], reason }],
+    events: [{ type: 'CardsDiscarded', owner, cards: [card.cardId], instances: [card], reason }],
   };
 }
 
@@ -563,16 +606,19 @@ function moveFromDiscard(
   to: 'hand' | 'draw',
 ): ApplyResult {
   const c = findCombatant(state, owner);
-  const at = c ? c.discardPile.lastIndexOf(cardId) : -1;
+  // Last copy first: the card being played was appended to the discard most
+  // recently, so this picks up that very copy and keeps any marks it carries.
+  const at = c ? c.discardPile.map((x) => x.cardId).lastIndexOf(cardId) : -1;
   if (!c || at < 0) return { state, events: [] };
+  const instance = c.discardPile[at]!;
   const discardPile = c.discardPile.filter((_, i) => i !== at);
   if (to === 'hand') {
     return {
-      state: mapCombatant(state, owner, (cc) => ({ ...cc, discardPile, hand: [...cc.hand, cardId] })),
+      state: mapCombatant(state, owner, (cc) => ({ ...cc, discardPile, hand: [...cc.hand, instance] })),
       events: [{ type: 'CardReturnedToHand', owner, cardId }],
     };
   }
-  const sh = shuffle([...c.drawPile, cardId], state.rng);
+  const sh = shuffle([...c.drawPile, instance], state.rng);
   return {
     state: { ...mapCombatant(state, owner, (cc) => ({ ...cc, discardPile, drawPile: sh.value })), rng: sh.state },
     events: [{ type: 'CardsRecovered', owner, cards: [cardId] }],

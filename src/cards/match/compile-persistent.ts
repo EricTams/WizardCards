@@ -95,13 +95,16 @@ function firingCount(trigger: TriggerNode, state: GameState, event: GameEvent): 
       return event.type === 'MinionDiscarded' ? event.count : 0;
     case 'minionReplayed':
       return event.type === 'MinionReplayed' ? 1 : 0;
+    case 'shuffleDeck':
+      return event.type === 'DeckReshuffled' ? 1 : 0;
     case 'discardCard':
       // Only a real hand-discard, matching Claw — see docs/triggers.md.
       return event.type === 'CardsDiscarded' && event.reason === 'discard' ? event.cards.length : 0;
     case 'discardClawCard':
       if (event.type !== 'CardsDiscarded' || event.reason !== 'discard') return 0;
-      return event.cards.filter((id) => {
-        const card = getCard(id);
+      return event.instances.filter((inst) => {
+        if (inst.claw === true) return true;
+        const card = getCard(inst.cardId);
         return card ? hasClaw(card) : false;
       }).length;
     default:
@@ -149,6 +152,10 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
       return effect.noun === 'thisCard' ? [] : [{ type: 'ShuffleDrawPile', owner: self }];
     case 'move':
       return [{ type: 'MoveDiscardToDrawPile', owner: self, count: amount }];
+    case 'add':
+      return effect.noun === 'clawDrawTop'
+        ? [{ type: 'AddClawToDrawTop', owner: self }]
+        : [{ type: 'AddClawToHand', owner: self, count: amount }];
     case 'retain':
       return [{ type: 'SetVenomRetains', target: self, value: true }];
     case 'remove':
