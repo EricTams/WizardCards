@@ -173,6 +173,35 @@ export const LOW_TIDE: CardDef = {
   text: 'Claw. Heal 1. Draw 1 card.',
 };
 
+/** Claw plus recursion: discarding it deals damage AND hands it back to you. */
+export const SAND_KICK: CardDef = {
+  id: cardId('crab-sand-kick'),
+  name: 'Sand Kick',
+  cost: 1,
+  text: 'Claw. Deal 2 damage. Return this card to your hand.',
+};
+
+export const TENTACLES: CardDef = {
+  id: cardId('crab-tentacles'),
+  name: 'Tentacles',
+  cost: 1,
+  text: 'Gain 1 energy. Deal 4 damage. Shuffle this card into your draw pile.',
+};
+
+export const CRAB_WALK: CardDef = {
+  id: cardId('crab-crab-walk'),
+  name: 'Crab Walk',
+  cost: 1,
+  text: 'Shuffle your draw pile. Discard 3 cards from your draw pile.',
+};
+
+export const DRY_OUT: CardDef = {
+  id: cardId('crab-dry-out'),
+  name: 'Dry Out',
+  cost: 1,
+  text: 'Gain 4 shields. Move 1 card from your discard pile to your draw pile.',
+};
+
 /** The pool a Crab deck is drawn from. */
 export const CRAB_CARDS: readonly CardDef[] = [
   LITTLE_SPLASH,
@@ -196,4 +225,8 @@ export const CRAB_CARDS: readonly CardDef[] = [
   ONE_FINGER_TOUCH,
   REFRESH,
   LOW_TIDE,
+  SAND_KICK,
+  TENTACLES,
+  CRAB_WALK,
+  DRY_OUT,
 ];

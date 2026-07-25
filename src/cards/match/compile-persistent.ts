@@ -10,6 +10,8 @@
  */
 import { metricValue, type Action, type GameEvent, type GameState } from '@engine/index';
 import { parse } from '@cards/dsl/parser';
+import { getCard } from '@cards/registry';
+import { hasClaw } from '@cards/match/claw';
 import type { EffectNode, TriggerCondition, TriggerNode } from '@cards/dsl/ast';
 import { CLOUD_CAP } from '@cards/match/content';
 
@@ -93,6 +95,15 @@ function firingCount(trigger: TriggerNode, state: GameState, event: GameEvent): 
       return event.type === 'MinionDiscarded' ? event.count : 0;
     case 'minionReplayed':
       return event.type === 'MinionReplayed' ? 1 : 0;
+    case 'discardCard':
+      // Only a real hand-discard, matching Claw — see docs/triggers.md.
+      return event.type === 'CardsDiscarded' && event.reason === 'discard' ? event.cards.length : 0;
+    case 'discardClawCard':
+      if (event.type !== 'CardsDiscarded' || event.reason !== 'discard') return 0;
+      return event.cards.filter((id) => {
+        const card = getCard(id);
+        return card ? hasClaw(card) : false;
+      }).length;
     default:
       return 0;
   }
@@ -132,6 +143,12 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
       return [{ type: 'FillCloudSlots', target: self, baseCap: CLOUD_CAP }];
     case 'double':
       return [{ type: 'SetCloudsPlayTwice', target: self, value: true }];
+    case 'shuffle':
+      // "Shuffle this card …" has no meaning here: a trigger fires from the play
+      // area, with no card being played to refer to. Only the pile form applies.
+      return effect.noun === 'thisCard' ? [] : [{ type: 'ShuffleDrawPile', owner: self }];
+    case 'move':
+      return [{ type: 'MoveDiscardToDrawPile', owner: self, count: amount }];
     case 'retain':
       return [{ type: 'SetVenomRetains', target: self, value: true }];
     case 'remove':
@@ -146,6 +163,7 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
       // `discard` in a trigger became DiscardMinion, so "discard 1 card" and
       // "discard your hand" silently discarded minions instead.
       if (effect.noun === 'allMinions') return [{ type: 'DiscardAllMinions', owner: self }];
+      if (effect.noun === 'drawPile') return [{ type: 'DiscardFromDrawPile', owner: self, count: amount }];
       if (effect.noun === 'minion') return [{ type: 'DiscardMinion', owner: self, count: amount }];
       if (effect.noun === 'hand') return [{ type: 'DiscardHand', owner: self }];
       return [{ type: 'DiscardCards', owner: self, count: amount }];
@@ -179,7 +197,16 @@ function resolveGain(noun: string | undefined, self: GameState['player']['id'], 
 
 function conditionHolds(state: GameState, condition: TriggerCondition): boolean {
   const value = playerResource(state, condition.resource);
-  return condition.op === 'gt' ? value > condition.amount : value >= condition.amount;
+  switch (condition.op) {
+    case 'gt':
+      return value > condition.amount;
+    case 'gte':
+      return value >= condition.amount;
+    case 'lt':
+      return value < condition.amount;
+    case 'lte':
+      return value <= condition.amount;
+  }
 }
 
 function playerResource(state: GameState, resource: string): number {
@@ -201,6 +228,10 @@ function playerResource(state: GameState, resource: string): number {
       return p.bravery;
     case 'hp':
       return p.hp;
+    case 'handSize':
+      return p.hand.length;
+    case 'cardsDiscardedThisTurn':
+      return p.discardedThisTurn;
     default:
       return 0;
   }

@@ -90,6 +90,14 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       return (ctx) => ({ type: 'FillCloudSlots', target: ctx.self, baseCap: CLOUD_CAP });
     case 'double':
       return (ctx) => ({ type: 'SetCloudsPlayTwice', target: ctx.self, value: true });
+    case 'return':
+      return (ctx) => ({ type: 'ReturnCardToHand', owner: ctx.self, cardId: ctx.sourceCard });
+    case 'shuffle':
+      return effect.noun === 'thisCard'
+        ? (ctx) => ({ type: 'ShuffleCardIntoDrawPile', owner: ctx.self, cardId: ctx.sourceCard })
+        : (ctx) => ({ type: 'ShuffleDrawPile', owner: ctx.self });
+    case 'move':
+      return (ctx) => ({ type: 'MoveDiscardToDrawPile', owner: ctx.self, count: amount });
     case 'retain':
       return (ctx) => ({ type: 'SetVenomRetains', target: ctx.self, value: true });
     case 'remove':
@@ -103,6 +111,7 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       // The noun picks the action: "discard 1 minion" (Wizard), "discard 1 card"
       // or "discard your hand" (Crab). The parser admits only these three.
       if (effect.noun === 'allMinions') return (ctx) => ({ type: 'DiscardAllMinions', owner: ctx.self });
+      if (effect.noun === 'drawPile') return (ctx) => ({ type: 'DiscardFromDrawPile', owner: ctx.self, count: amount });
       if (effect.noun === 'minion') return (ctx) => ({ type: 'DiscardMinion', owner: ctx.self, count: amount });
       if (effect.noun === 'hand') return (ctx) => ({ type: 'DiscardHand', owner: ctx.self });
       return (ctx) => ({ type: 'DiscardCards', owner: ctx.self, count: amount });

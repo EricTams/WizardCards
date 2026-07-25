@@ -35,6 +35,10 @@ export type Verb =
   | 'fill'
   | 'double'
   | 'retain'
+  // pile movement
+  | 'return'
+  | 'shuffle'
+  | 'move'
   // minion effects
   | 'discard'
   // bare keyword effects (no amount / noun)
@@ -70,10 +74,12 @@ export type TriggerEventKind =
   | 'dealUnblockedDamage'
   | 'discardMinion'
   | 'minionReplayed'
+  | 'discardCard'
+  | 'discardClawCard'
   | 'startTurn'
   | 'endTurn';
 
-export type ConditionOp = 'gt' | 'gte';
+export type ConditionOp = 'gt' | 'gte' | 'lt' | 'lte';
 
 /** A gate like "if you have over 3 energy". */
 export interface TriggerCondition {

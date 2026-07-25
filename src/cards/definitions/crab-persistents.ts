@@ -2,7 +2,7 @@
  * The Crab — persistent (ongoing) cards, authored in English.
  *
  * Crab Trap and Exoskeleton are what today's trigger grammar can express. The
- * remaining five key off things the engine can't yet observe — how much of your
+ * remaining two key off things the engine can't yet observe — how much of your
  * hand you discarded, whether a discarded card had Claw, a deck shuffle — see
  * `docs/roadmap.md`.
  */
@@ -24,4 +24,27 @@ export const EXOSKELETON: CardDef = {
   text: 'At the end of your turn, if you have 5 or more block, discard your hand, draw 4 cards.',
 };
 
-export const CRAB_PERSISTENTS: readonly CardDef[] = [CRAB_TRAP, EXOSKELETON];
+/** The big-churn payoff: ten discards in one turn hits the whole table. */
+export const DECAPOD: CardDef = {
+  id: cardId('crab-decapod'),
+  name: 'Decapod',
+  cost: 1,
+  text: 'When you discard a card, if you have discarded 10 or more cards, deal 10 damage to all opponents.',
+};
+
+/** "Discard your entire hand" — checked as the hand being empty afterwards. */
+export const EYESTALKS: CardDef = {
+  id: cardId('crab-eyestalks'),
+  name: 'Eyestalks',
+  cost: 1,
+  text: 'When you discard a card, if you have fewer than 1 card in hand, gain 2 energy.',
+};
+
+export const PRAWN: CardDef = {
+  id: cardId('crab-prawn'),
+  name: 'Prawn',
+  cost: 1,
+  text: 'When you discard a card with claw, deal 3 damage.',
+};
+
+export const CRAB_PERSISTENTS: readonly CardDef[] = [CRAB_TRAP, EXOSKELETON, DECAPOD, EYESTALKS, PRAWN];

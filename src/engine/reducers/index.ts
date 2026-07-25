@@ -40,6 +40,11 @@ export type GameEvent =
     }
   | { readonly type: 'TurnCountersCleared'; readonly target: EntityId }
   | { readonly type: 'DeckReshuffled'; readonly owner: EntityId }
+  /** Cards moved draw pile -> discard without passing through a hand. */
+  | { readonly type: 'CardsMilled'; readonly owner: EntityId; readonly cards: readonly CardId[] }
+  /** Cards moved discard -> draw pile. */
+  | { readonly type: 'CardsRecovered'; readonly owner: EntityId; readonly cards: readonly CardId[] }
+  | { readonly type: 'CardReturnedToHand'; readonly owner: EntityId; readonly cardId: CardId }
   | { readonly type: 'EnergySet'; readonly target: EntityId; readonly amount: number }
   // `unblocked` is the portion that got past block+shield — what triggers like
   // Rot Away ("whenever you deal unblocked damage") key off.
@@ -199,6 +204,59 @@ export function apply(state: GameState, action: Action): ApplyResult {
         state: mapCombatant(state, action.target, (c) => ({ ...c, venomRetains: action.value })),
         events: [{ type: 'VenomRetainsSet', target: action.target, value: action.value }],
       };
+
+    case 'ReturnCardToHand':
+      return moveFromDiscard(state, action.owner, action.cardId, 'hand');
+
+    case 'ShuffleCardIntoDrawPile':
+      return moveFromDiscard(state, action.owner, action.cardId, 'draw');
+
+    case 'ShuffleDrawPile': {
+      const c = findCombatant(state, action.owner);
+      if (!c) return { state, events: [] };
+      const sh = shuffle(c.drawPile.slice(), state.rng);
+      return {
+        state: { ...mapCombatant(state, action.owner, (cc) => ({ ...cc, drawPile: sh.value })), rng: sh.state },
+        events: [{ type: 'DeckReshuffled', owner: action.owner }],
+      };
+    }
+
+    case 'DiscardFromDrawPile': {
+      const c = findCombatant(state, action.owner);
+      if (!c) return { state, events: [{ type: 'CardsDiscarded', owner: action.owner, cards: [], reason: 'discard' }] };
+      const n = Math.min(Math.max(0, action.count), c.drawPile.length);
+      const taken = c.drawPile.slice(0, n);
+      return {
+        state: mapCombatant(state, action.owner, (cc) => ({
+          ...cc,
+          drawPile: cc.drawPile.slice(n),
+          discardPile: [...cc.discardPile, ...taken],
+        })),
+        // These never touched a hand, so they are not a hand-discard: Claw and
+        // the per-turn discard count both key off cards leaving the HAND.
+        events: [{ type: 'CardsMilled', owner: action.owner, cards: taken }],
+      };
+    }
+
+    case 'MoveDiscardToDrawPile': {
+      const c = findCombatant(state, action.owner);
+      if (!c) return { state, events: [] };
+      const n = Math.min(Math.max(0, action.count), c.discardPile.length);
+      if (n === 0) return { state, events: [] };
+      const moved = c.discardPile.slice(c.discardPile.length - n);
+      const sh = shuffle([...c.drawPile, ...moved], state.rng);
+      return {
+        state: {
+          ...mapCombatant(state, action.owner, (cc) => ({
+            ...cc,
+            discardPile: cc.discardPile.slice(0, cc.discardPile.length - n),
+            drawPile: sh.value,
+          })),
+          rng: sh.state,
+        },
+        events: [{ type: 'CardsRecovered', owner: action.owner, cards: moved }],
+      };
+    }
 
     case 'DiscardAllMinions':
       return discardMinion(state, action.owner, findCombatant(state, action.owner)?.minions.length ?? 0);
@@ -491,6 +549,34 @@ function gainResource(
               ? { type: 'BraveryGained', target, amount }
               : { type: 'PoisonChanged', target, amount };
   return { state: next, events: [event] };
+}
+
+/**
+ * Take one copy of `cardId` out of the discard pile and put it in the hand, or
+ * shuffled into the draw pile. A no-op if it isn't there — a card can only come
+ * back from somewhere.
+ */
+function moveFromDiscard(
+  state: GameState,
+  owner: EntityId,
+  cardId: CardId,
+  to: 'hand' | 'draw',
+): ApplyResult {
+  const c = findCombatant(state, owner);
+  const at = c ? c.discardPile.lastIndexOf(cardId) : -1;
+  if (!c || at < 0) return { state, events: [] };
+  const discardPile = c.discardPile.filter((_, i) => i !== at);
+  if (to === 'hand') {
+    return {
+      state: mapCombatant(state, owner, (cc) => ({ ...cc, discardPile, hand: [...cc.hand, cardId] })),
+      events: [{ type: 'CardReturnedToHand', owner, cardId }],
+    };
+  }
+  const sh = shuffle([...c.drawPile, cardId], state.rng);
+  return {
+    state: { ...mapCombatant(state, owner, (cc) => ({ ...cc, discardPile, drawPile: sh.value })), rng: sh.state },
+    events: [{ type: 'CardsRecovered', owner, cards: [cardId] }],
+  };
 }
 
 const CLOUD_KINDS: readonly CloudType[] = ['lightning', 'storm', 'snow', 'fog'];

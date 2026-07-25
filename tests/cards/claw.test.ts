@@ -2,8 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { buildTestState, playFromHand, confirmMulligan, startTurn, endTurn, TEST_SELF, TEST_TARGET } from '@cards/index';
 import { applyWithTriggers } from '@cards/match/index';
 import { hasClaw } from '@cards/match/claw';
-import { PINCH, LITTLE_SPLASH, HERMIT, LOCATOR, BOIL, QUICKSAND, REFRESH } from '@cards/definitions/crab';
-import { EXOSKELETON } from '@cards/definitions/crab-persistents';
+import {
+  PINCH, LITTLE_SPLASH, HERMIT, LOCATOR, BOIL, QUICKSAND, REFRESH,
+  SAND_KICK, TENTACLES, CRAB_WALK, DRY_OUT,
+} from '@cards/definitions/crab';
+import { EXOSKELETON, DECAPOD, EYESTALKS, PRAWN } from '@cards/definitions/crab-persistents';
 import type { CardId } from '@shared/index';
 
 const enemyHp = (s: ReturnType<typeof buildTestState>) => s.enemies[0]!.hp;
@@ -167,5 +170,102 @@ describe('cards discarded this turn', () => {
 
     const { state: next } = startTurn(afterPlay, { draw: 0 });
     expect(next.player.discardedThisTurn).toBe(0);
+  });
+});
+
+describe('moving cards between piles', () => {
+  it('Sand Kick comes back to hand after dealing its damage', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [SAND_KICK.id] },
+      target: { hp: 30, maxHp: 30 },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 0);
+    expect(after.enemies[0]!.hp).toBe(28);
+    expect(after.player.hand).toEqual([SAND_KICK.id]); // back in hand…
+    expect(after.player.discardPile).toHaveLength(0); // …not left in the discard
+  });
+
+  it('Sand Kick also returns itself when discarded, via Claw', () => {
+    const state = buildTestState({
+      player: { energy: 0, hand: [SAND_KICK.id] },
+      target: { hp: 30, maxHp: 30 },
+    });
+    const { state: after } = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 1 });
+    expect(after.enemies[0]!.hp).toBe(28);
+    expect(after.player.hand).toEqual([SAND_KICK.id]);
+  });
+
+  it('Tentacles goes back into the draw pile instead of the discard', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [TENTACLES.id], drawPile: ['a', 'b'] as CardId[] },
+      target: { hp: 30, maxHp: 30 },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 0);
+    expect(after.enemies[0]!.hp).toBe(26);
+    expect(after.player.drawPile).toContain(TENTACLES.id);
+    expect(after.player.drawPile).toHaveLength(3);
+    expect(after.player.discardPile).toHaveLength(0);
+  });
+
+  it('Crab Walk mills 3 off the draw pile — which is not a hand discard', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [CRAB_WALK.id], drawPile: ['a', 'b', 'c', 'd', 'e'] as CardId[] },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 0);
+    expect(after.player.drawPile).toHaveLength(2);
+    expect(after.player.discardPile).toHaveLength(4); // 3 milled + Crab Walk itself
+    // Milling never touched a hand, so it must not count as discarding.
+    expect(after.player.discardedThisTurn).toBe(0);
+  });
+
+  it('Dry Out recycles a card out of the discard pile', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [DRY_OUT.id], discardPile: ['a', 'b'] as CardId[], drawPile: [] },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 0);
+    expect(after.player.shield).toBe(4);
+    expect(after.player.drawPile).toHaveLength(1);
+  });
+});
+
+describe('the discard-counting persistents', () => {
+  it('Decapod fires only once the turn total reaches 10', () => {
+    const hand = Array.from({ length: 12 }, (_, i) => `c${i}` as CardId);
+    const state = buildTestState({
+      player: { persistents: [DECAPOD.id], hand },
+      target: { hp: 40, maxHp: 40 },
+    });
+    const few = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 3 }).state;
+    expect(few.enemies[0]!.hp).toBe(40); // 3 discards: nothing
+
+    const many = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 10 }).state;
+    expect(many.enemies[0]!.hp).toBeLessThan(40); // 10 discards: it goes off
+  });
+
+  it('Eyestalks pays out only when the hand is emptied', () => {
+    const partial = buildTestState({
+      player: { energy: 0, persistents: [EYESTALKS.id], hand: ['a', 'b', 'c'] as CardId[] },
+    });
+    expect(applyWithTriggers(partial, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state.player.energy).toBe(0);
+
+    const emptied = buildTestState({
+      player: { energy: 0, persistents: [EYESTALKS.id], hand: ['a', 'b'] as CardId[] },
+    });
+    expect(applyWithTriggers(emptied, { type: 'DiscardHand', owner: TEST_SELF }).state.player.energy).toBeGreaterThan(0);
+  });
+
+  it('Prawn fires per discarded Claw card, ignoring the rest', () => {
+    const withClaw = buildTestState({
+      player: { persistents: [PRAWN.id], hand: [LITTLE_SPLASH.id, PINCH.id] },
+      target: { hp: 40, maxHp: 40 },
+    });
+    const a = applyWithTriggers(withClaw, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state;
+    expect(a.enemies[0]!.hp).toBe(40 - 3 - 4); // Prawn's 3, plus Pinch's own Claw
+
+    const noClaw = buildTestState({
+      player: { persistents: [PRAWN.id], hand: [LITTLE_SPLASH.id] },
+      target: { hp: 40, maxHp: 40 },
+    });
+    expect(applyWithTriggers(noClaw, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state.enemies[0]!.hp).toBe(40);
   });
 });

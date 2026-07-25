@@ -236,6 +236,45 @@ export interface SetVenomRetains {
   readonly value: boolean;
 }
 
+/**
+ * Card movement between a combatant's own piles. All four take the card from
+ * the discard pile, because a card's own effects resolve *after* playing has
+ * already moved it there — so "put this card back into your hand" is a move out
+ * of the discard, not out of nowhere.
+ */
+export interface ReturnCardToHand {
+  readonly type: 'ReturnCardToHand';
+  readonly owner: EntityId;
+  readonly cardId: CardId;
+}
+
+/** Put one copy of `cardId` back into the draw pile at a random depth. */
+export interface ShuffleCardIntoDrawPile {
+  readonly type: 'ShuffleCardIntoDrawPile';
+  readonly owner: EntityId;
+  readonly cardId: CardId;
+}
+
+/** Shuffle the draw pile in place (Crab Walk). */
+export interface ShuffleDrawPile {
+  readonly type: 'ShuffleDrawPile';
+  readonly owner: EntityId;
+}
+
+/** Discard `count` cards off the top of the draw pile (Crab Walk). */
+export interface DiscardFromDrawPile {
+  readonly type: 'DiscardFromDrawPile';
+  readonly owner: EntityId;
+  readonly count: number;
+}
+
+/** Move `count` cards from the discard pile back into the draw pile (Dry Out). */
+export interface MoveDiscardToDrawPile {
+  readonly type: 'MoveDiscardToDrawPile';
+  readonly owner: EntityId;
+  readonly count: number;
+}
+
 /** Discard every minion a combatant has in play (Explosion). */
 export interface DiscardAllMinions {
   readonly type: 'DiscardAllMinions';
@@ -355,6 +394,11 @@ export type Action =
   | SetVenomRetains
   | DiscardAllMinions
   | NoteCardPlayed
-  | NoteMinionReplayed;
+  | NoteMinionReplayed
+  | ReturnCardToHand
+  | ShuffleCardIntoDrawPile
+  | ShuffleDrawPile
+  | DiscardFromDrawPile
+  | MoveDiscardToDrawPile;
 
 export type ActionType = Action['type'];

@@ -151,6 +151,11 @@ function parseEventPhrase(
   }
   if (has('unblocked') && has('damage')) return { event: 'dealUnblockedDamage' };
   if ((has('minion') || has('minions')) && has('replayed')) return { event: 'minionReplayed' };
+  // Card discards. The Claw-qualified form is the narrower reading of the same
+  // words, so it has to be tested first.
+  if ((has('card') || has('cards')) && (has('discard') || has('discarded'))) {
+    return has('claw') ? { event: 'discardClawCard' } : { event: 'discardCard' };
+  }
   if ((has('minion') || has('minions')) && (has('discarded') || has('discard')))
     return { event: 'discardMinion' };
 
@@ -176,16 +181,26 @@ function parseCondition(clause: Token[], diagnostics: Diagnostic[]): TriggerCond
   // matched on `more` and compiled to a strict >, so a card asking for "5 or
   // more block" quietly ignored exactly 5.
   const inclusive = words.includes('or');
+  const below = words.includes('fewer') || words.includes('less') || words.includes('under');
+  if (below) {
+    // "fewer than N" is strict; "N or fewer" includes N — same `or` rule.
+    return { resource: normalizeResource(resource), op: inclusive ? 'lte' : 'lt', amount: Number(numberTok.value) };
+  }
   const strict = !inclusive && (words.includes('over') || words.includes('more') || words.includes('greater'));
   return { resource: normalizeResource(resource), op: strict ? 'gt' : 'gte', amount: Number(numberTok.value) };
 }
 
 const RESOURCE_WORDS = new Set([
   'energy', 'block', 'shield', 'shields', 'defense', 'poison', 'power', 'bravery', 'hp', 'health', 'hearts',
+  // Countable things a condition can gate on, not just resources.
+  'hand', 'discarded',
 ]);
 
 function normalizeResource(word: string): string {
   if (word === 'health' || word === 'hearts') return 'hp';
+  // "…cards in hand" gates on hand size; "…discarded N cards" on the turn count.
+  if (word === 'hand') return 'handSize';
+  if (word === 'discarded') return 'cardsDiscardedThisTurn';
   return singular(word);
 }
 
@@ -439,6 +454,25 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       }
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
     }
+    case 'return': {
+      // "Return this card to your hand." — always the card being played.
+      const last = group[group.length - 1]!;
+      return { kind: 'Effect', verb: 'return', noun: 'thisCard', ...span(head, last) };
+    }
+    case 'shuffle': {
+      // "Shuffle this card into your draw pile." vs "Shuffle your draw pile."
+      const last = group[group.length - 1]!;
+      const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
+      const noun = words.includes('this') ? 'thisCard' : 'drawPile';
+      return { kind: 'Effect', verb: 'shuffle', noun, ...span(head, last) };
+    }
+    case 'move': {
+      // "Move 1 card from your discard pile to your draw pile."
+      const last = group[group.length - 1]!;
+      const n = expectNumber(group, 1, head, diagnostics);
+      if (n === null) return null;
+      return { kind: 'Effect', verb: 'move', amount: n, noun: 'discardToDraw', ...span(head, last) };
+    }
     case 'retain': {
       // "Retain your poison" arms the next Venom to keep it.
       const last = group[group.length - 1]!;
@@ -494,6 +528,12 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       }
       if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'all')) {
         return { kind: 'Effect', verb: 'discard', noun: 'allMinions', ...span(head, last) };
+      }
+      // "Discard 3 cards from your draw pile" — off the top, never from hand.
+      if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'draw')) {
+        const n = expectNumber(group, 1, head, diagnostics);
+        if (n === null) return null;
+        return { kind: 'Effect', verb: 'discard', amount: n, noun: 'drawPile', ...span(head, last) };
       }
       // "Discard 1 card" (the Crab) and "Discard 1 minion" (the Wizard) share a
       // verb; the resolver picks the action from the noun.
