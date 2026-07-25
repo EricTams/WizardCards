@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTestState, playFromHand, confirmMulligan, startTurn, TEST_SELF } from '@cards/index';
+import { buildTestState, playFromHand, confirmMulligan, startTurn, TEST_SELF, TEST_TARGET } from '@cards/index';
 import { applyWithTriggers } from '@cards/match/index';
 import { hasClaw } from '@cards/match/claw';
 import { PINCH, LITTLE_SPLASH, HERMIT, LOCATOR, BOIL, QUICKSAND } from '@cards/definitions/crab';
@@ -59,6 +59,23 @@ describe('Claw — plays for free when discarded', () => {
     const { state: after } = confirmMulligan(state, [0]);
     expect(after.enemies[0]!.hp).toBe(30);
     expect(after.player.discardPile).toContain(PINCH.id); // it was still discarded
+  });
+
+  it('fires however the discard was caused, and still fights for its owner', () => {
+    // Nothing can force an opponent to discard today, but the machinery is
+    // owner-relative rather than causer-relative, so it holds when one can.
+    const state = buildTestState({ player: { energy: 0, hand: [PINCH.id] }, target: { hp: 30, maxHp: 30 } });
+    const { state: after } = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 1 });
+    expect(after.enemies[0]!.hp).toBe(26); // hits our opponent…
+    expect(after.player.hp).toBe(state.player.hp); // …not us
+  });
+
+  it("an enemy Crab's Claw aims back at the player — reachable in Attract Mode", () => {
+    const base = buildTestState({ player: { hp: 30, maxHp: 30 }, target: { hp: 30, maxHp: 30 } });
+    const state = { ...base, enemies: [{ ...base.enemies[0]!, hand: [PINCH.id] }] };
+    const { state: after } = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_TARGET, count: 1 });
+    expect(after.player.hp).toBe(26); // the enemy's Claw hit us
+    expect(after.enemies[0]!.hp).toBe(30); // it did not hit itself
   });
 
   it('chains — a discarded Claw card that itself discards keeps the cascade going', () => {
