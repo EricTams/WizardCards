@@ -119,7 +119,12 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
     case 'remove':
       return [{ type: 'RemoveClouds', target: self, count: amount }];
     case 'discard':
-      return [{ type: 'DiscardMinion', owner: self, count: amount }];
+      // Must mirror the on-play resolver's noun handling — before this, every
+      // `discard` in a trigger became DiscardMinion, so "discard 1 card" and
+      // "discard your hand" silently discarded minions instead.
+      if (effect.noun === 'minion') return [{ type: 'DiscardMinion', owner: self, count: amount }];
+      if (effect.noun === 'hand') return [{ type: 'DiscardHand', owner: self }];
+      return [{ type: 'DiscardCards', owner: self, count: amount }];
     case 'gain':
       return resolveGain(effect.noun, self, amount);
     default:

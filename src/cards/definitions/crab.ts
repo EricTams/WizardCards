@@ -7,7 +7,7 @@
  * the Cloud builds a board of clouds, the Crab churns its hand.
  *
  * This batch is the subset expressible with today's grammar (deal / heal / gain /
- * draw / discard cards / Claw / scaling off cards discarded this turn), matching
+ * draw / discard cards / discard your hand / Claw / scaling off cards discarded this turn), matching
  * how the Cloud and Wizard pools shipped. The rest of the designed 40 need
  * machinery that doesn't exist yet — choosing a card from hand, moving cards
  * between piles, replaying a card, granting Claw to another card — see
@@ -158,6 +158,14 @@ export const ONE_FINGER_TOUCH: CardDef = {
   text: 'Draw 3 cards. Discard 1 card.',
 };
 
+/** Dump the hand and refill — every Claw card dumped fires on the way out. */
+export const REFRESH: CardDef = {
+  id: cardId('crab-refresh'),
+  name: 'Refresh',
+  cost: 1,
+  text: 'Gain 1 energy. Discard your hand. Draw 3 cards.',
+};
+
 export const LOW_TIDE: CardDef = {
   id: cardId('crab-low-tide'),
   name: 'Low Tide',
@@ -186,5 +194,6 @@ export const CRAB_CARDS: readonly CardDef[] = [
   BOIL,
   PICKLE_PAL,
   ONE_FINGER_TOUCH,
+  REFRESH,
   LOW_TIDE,
 ];

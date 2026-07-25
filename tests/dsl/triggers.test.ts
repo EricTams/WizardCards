@@ -55,6 +55,23 @@ describe('trigger grammar', () => {
     });
   });
 
+  it('distinguishes strict "over N" from inclusive "N or more"', () => {
+    // The `or` is what makes it inclusive; "more" alone is strict. Without that,
+    // "N or more" matched on `more` and compiled to a strict >, so a card asking
+    // for "5 or more block" ignored exactly 5.
+    expect(script('At the end of your turn, if you have over 3 energy, draw 1 card.').triggers[0]?.condition)
+      .toMatchObject({ resource: 'energy', op: 'gt', amount: 3 });
+    expect(script('At the end of your turn, if you have 5 or more block, draw 1 card.').triggers[0]?.condition)
+      .toMatchObject({ resource: 'block', op: 'gte', amount: 5 });
+  });
+
+  it('routes a trigger\'s discard by its noun, like the on-play resolver', () => {
+    expect(script('At the end of your turn, discard 1 card.').triggers[0]?.effects[0])
+      .toMatchObject({ verb: 'discard', noun: 'card' });
+    expect(script('At the end of your turn, discard your hand.').triggers[0]?.effects[0])
+      .toMatchObject({ verb: 'discard', noun: 'hand' });
+  });
+
   it('still parses plain on-play effects alongside the new grammar', () => {
     const s = script('Deal 6 damage.');
     expect(s.effects).toHaveLength(1);

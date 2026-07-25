@@ -96,6 +96,13 @@ export function apply(state: GameState, action: Action): ApplyResult {
     case 'DiscardCards':
       return discardCards(state, action.owner ?? state.player.id, action.count);
 
+    case 'DiscardHand': {
+      // Routed through discardCards so it counts, reasons, and triggers exactly
+      // like any other discard — it just takes everything.
+      const owner = action.owner ?? state.player.id;
+      return discardCards(state, owner, findCombatant(state, owner)?.hand.length ?? 0);
+    }
+
     case 'MoveHandCardToDiscard':
       return moveHandCardToDiscard(state, action.owner ?? state.player.id, action.index, action.reason ?? 'play');
 

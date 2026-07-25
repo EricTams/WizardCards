@@ -153,6 +153,48 @@ export const SPIN: CardDef = {
   text: 'Deal 3 damage for each unique cloud.',
 };
 
+export const DRAW_LATER: CardDef = {
+  id: cardId('cloud-draw-later'),
+  name: 'Draw Later',
+  cost: 1,
+  text: 'Draw 1 card. Create 2 fog clouds.',
+};
+
+export const DRAW_NOW: CardDef = {
+  id: cardId('cloud-draw-now'),
+  name: 'Draw Now',
+  cost: 1,
+  text: 'Draw 2 cards. Create 1 fog cloud.',
+};
+
+export const EMPTY_OUT: CardDef = {
+  id: cardId('cloud-empty-out'),
+  name: 'Empty Out',
+  cost: 1,
+  text: 'Heal 1. Remove 3 clouds.',
+};
+
+export const SPARK: CardDef = {
+  id: cardId('cloud-spark'),
+  name: 'Spark',
+  cost: 1,
+  text: 'Gain 3 energy. Remove 3 clouds.',
+};
+
+export const CLEAR: CardDef = {
+  id: cardId('cloud-clear'),
+  name: 'Clear',
+  cost: 1,
+  text: 'Remove 1 cloud. Create 2 fog clouds.',
+};
+
+export const FINAL_SHOCK: CardDef = {
+  id: cardId('cloud-final-shock'),
+  name: 'Final Shock',
+  cost: 1,
+  text: 'Create 3 lightning clouds.',
+};
+
 /** Every Cloud card in this batch, in table order. */
 export const CLOUD_CARDS: readonly CardDef[] = [
   SUN_RAY,
@@ -175,4 +217,10 @@ export const CLOUD_CARDS: readonly CardDef[] = [
   BLIZZARD,
   ELECTROCUTE,
   SPIN,
+  DRAW_LATER,
+  DRAW_NOW,
+  EMPTY_OUT,
+  SPARK,
+  CLEAR,
+  FINAL_SHOCK,
 ];

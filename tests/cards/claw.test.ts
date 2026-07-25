@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildTestState, playFromHand, confirmMulligan, startTurn, TEST_SELF, TEST_TARGET } from '@cards/index';
+import { buildTestState, playFromHand, confirmMulligan, startTurn, endTurn, TEST_SELF, TEST_TARGET } from '@cards/index';
 import { applyWithTriggers } from '@cards/match/index';
 import { hasClaw } from '@cards/match/claw';
-import { PINCH, LITTLE_SPLASH, HERMIT, LOCATOR, BOIL, QUICKSAND } from '@cards/definitions/crab';
+import { PINCH, LITTLE_SPLASH, HERMIT, LOCATOR, BOIL, QUICKSAND, REFRESH } from '@cards/definitions/crab';
+import { EXOSKELETON } from '@cards/definitions/crab-persistents';
 import type { CardId } from '@shared/index';
 
 const enemyHp = (s: ReturnType<typeof buildTestState>) => s.enemies[0]!.hp;
@@ -90,6 +91,48 @@ describe('Claw — plays for free when discarded', () => {
     expect(after.player.hp).toBe(12); // Hermit healed 2
     expect(after.enemies[0]!.hp).toBe(26); // then Pinch's Claw dealt 4
     expect(after.player.hand).toHaveLength(0);
+  });
+});
+
+describe('discard your hand', () => {
+  it('Refresh dumps the hand — firing any Claw on the way out — then redraws 3', () => {
+    const state = buildTestState({
+      player: {
+        energy: 5,
+        hand: [PINCH.id, 'x' as CardId, REFRESH.id],
+        drawPile: ['a', 'b', 'c', 'd'] as CardId[],
+      },
+      target: { hp: 30, maxHp: 30 },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 2);
+
+    expect(after.enemies[0]!.hp).toBe(26); // the dumped Pinch played itself
+    expect(after.player.hand).toHaveLength(3); // …then drew a fresh 3
+    expect(after.player.discardedThisTurn).toBe(2); // both dumped cards counted
+  });
+
+  it('Exoskeleton cashes 5+ block for a new hand at end of turn', () => {
+    const state = buildTestState({
+      player: {
+        block: 5,
+        persistents: [EXOSKELETON.id],
+        hand: ['p', 'q'] as CardId[],
+        drawPile: ['a', 'b', 'c', 'd', 'e'] as CardId[],
+      },
+    });
+    expect(endTurn(state).state.player.hand).toHaveLength(4);
+  });
+
+  it('Exoskeleton stays quiet below 5 block', () => {
+    const state = buildTestState({
+      player: {
+        block: 2,
+        persistents: [EXOSKELETON.id],
+        hand: ['p', 'q'] as CardId[],
+        drawPile: ['a', 'b', 'c', 'd', 'e'] as CardId[],
+      },
+    });
+    expect(endTurn(state).state.player.hand).toHaveLength(2);
   });
 });
 

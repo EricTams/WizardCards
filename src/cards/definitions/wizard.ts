@@ -161,6 +161,49 @@ export const HURL: CardDef = {
   text: 'Discard 2 minions. Deal damage equal to your defense.',
 };
 
+export const ELECTRIC: CardDef = {
+  id: cardId('wizard-electric'),
+  name: 'Electric',
+  cost: 1,
+  text: 'Draw 2 cards. Gain 1 energy.',
+};
+
+export const MIND_READ: CardDef = {
+  id: cardId('wizard-mind-read'),
+  name: 'Mind Read',
+  cost: 1,
+  text: 'Drink. Deal 3 damage.',
+};
+
+/** "Drink Twice" — two Drink statements, since each spends the poison in turn. */
+export const SQUID_MODE: CardDef = {
+  id: cardId('wizard-squid-mode'),
+  name: 'Squid Mode',
+  cost: 1,
+  text: 'Drink. Drink. Gain 1 energy.',
+};
+
+export const UNFRIENDLY: CardDef = {
+  id: cardId('wizard-unfriendly'),
+  name: 'Unfriendly',
+  cost: 1,
+  text: 'Draw 4 cards. Discard 1 minion.',
+};
+
+export const BATTERY: CardDef = {
+  id: cardId('wizard-battery'),
+  name: 'Battery',
+  cost: 1,
+  text: 'Minion. Gain 1 energy.',
+};
+
+export const DELIVERY: CardDef = {
+  id: cardId('wizard-delivery'),
+  name: 'Delivery',
+  cost: 1,
+  text: 'Minion. Draw 1 card.',
+};
+
 /** Every Wizard card in this batch, in table order. */
 export const WIZARD_CARDS: readonly CardDef[] = [
   WIZARD_ZAP,
@@ -184,4 +227,10 @@ export const WIZARD_CARDS: readonly CardDef[] = [
   ALCHEMY,
   CRYSTAL_BALL,
   HURL,
+  ELECTRIC,
+  MIND_READ,
+  SQUID_MODE,
+  UNFRIENDLY,
+  BATTERY,
+  DELIVERY,
 ];

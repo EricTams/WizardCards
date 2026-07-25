@@ -1,10 +1,10 @@
 /**
  * The Crab — persistent (ongoing) cards, authored in English.
  *
- * Only Crab Trap is expressible with today's trigger grammar. The Crab's other
- * six designed persistents all key off things the engine can't yet observe —
- * how much of your hand you discarded, whether a discarded card had Claw, a
- * deck shuffle — see `docs/roadmap.md`.
+ * Crab Trap and Exoskeleton are what today's trigger grammar can express. The
+ * remaining five key off things the engine can't yet observe — how much of your
+ * hand you discarded, whether a discarded card had Claw, a deck shuffle — see
+ * `docs/roadmap.md`.
  */
 import { cardId } from '@shared/index';
 import type { CardDef } from '@cards/registry';
@@ -16,4 +16,12 @@ export const CRAB_TRAP: CardDef = {
   text: 'At the start of your turn, draw 1 additional card.',
 };
 
-export const CRAB_PERSISTENTS: readonly CardDef[] = [CRAB_TRAP];
+/** Turtle up, then cash the block in for a fresh hand (firing any Claw with it). */
+export const EXOSKELETON: CardDef = {
+  id: cardId('crab-exoskeleton'),
+  name: 'Exoskeleton',
+  cost: 1,
+  text: 'At the end of your turn, if you have 5 or more block, discard your hand, draw 4 cards.',
+};
+
+export const CRAB_PERSISTENTS: readonly CardDef[] = [CRAB_TRAP, EXOSKELETON];

@@ -170,8 +170,13 @@ function parseCondition(clause: Token[], diagnostics: Diagnostic[]): TriggerCond
     diagnostics.push(diag('Condition needs a resource (energy, block, poison, …).', clause[0]!));
     return null;
   }
-  const gt = words.includes('over') || words.includes('more') || words.includes('greater');
-  return { resource: normalizeResource(resource), op: gt ? 'gt' : 'gte', amount: Number(numberTok.value) };
+  // "over N" / "more than N" are strict; "N or more" / "N or greater" include N.
+  // The `or` is what separates them — without it, the documented inclusive form
+  // matched on `more` and compiled to a strict >, so a card asking for "5 or
+  // more block" quietly ignored exactly 5.
+  const inclusive = words.includes('or');
+  const strict = !inclusive && (words.includes('over') || words.includes('more') || words.includes('greater'));
+  return { resource: normalizeResource(resource), op: strict ? 'gt' : 'gte', amount: Number(numberTok.value) };
 }
 
 const RESOURCE_WORDS = new Set([
@@ -364,10 +369,17 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
     }
     case 'remove':
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
-    case 'discard':
+    case 'discard': {
+      // "Discard your hand" takes no number, so it can't go through the
+      // amount+noun path the counted forms use.
+      const last = group[group.length - 1]!;
+      if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'hand')) {
+        return { kind: 'Effect', verb: 'discard', noun: 'hand', ...span(head, last) };
+      }
       // "Discard 1 card" (the Crab) and "Discard 1 minion" (the Wizard) share a
       // verb; the resolver picks the action from the noun.
       return needAmountNoun(group, 'discard', ['minion', 'card'], diagnostics);
+    }
     default:
       diagnostics.push(diag(`Unknown verb "${head.value}".`, head));
       return null;

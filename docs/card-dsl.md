@@ -30,7 +30,7 @@ poison  <number>
 draw    <number> ["card"]
 create  <number> CLOUD "cloud"     CLOUD ∈ lightning | storm | snow | fog
 remove  <number> "cloud"
-discard <number> ("minion" | "card")
+discard <number> ("minion" | "card") | discard "your hand"
 "venom" | "drink" | "minion"       bare keyword effects (no number/noun)
 ```
 
@@ -47,6 +47,7 @@ discard <number> ("minion" | "card")
 | `Remove 1 cloud.`          | `{ verb:'remove', amount:1, noun:'cloud' }`         | `RemoveClouds(self, 1)`                    |
 | `Discard 1 minion.`        | `{ verb:'discard', amount:1, noun:'minion' }`       | `DiscardMinion(self, 1)`                   |
 | `Discard 2 cards.`         | `{ verb:'discard', amount:2, noun:'card' }`         | `DiscardCards(self, 2)`                    |
+| `Discard your hand.`       | `{ verb:'discard', noun:'hand' }`                    | `DiscardHand(self)`                        |
 | `Venom.`                   | `{ verb:'venom' }`                                  | `Venom(self, target)`                      |
 | `Drink.`                   | `{ verb:'drink' }`                                  | `Drink(self)`                              |
 | `Minion.`                  | `{ verb:'minion' }`                                 | `SummonMinion(self, sourceCard)`           |
@@ -76,7 +77,9 @@ Parsing has two levels: text splits into **sentences** on `.`/`;`, and each sent
 
 The when-phrase is matched by keywords, so wording is forgiving. A reactive trigger fires **once per unit** — per cloud created, per matching cloud removed, per minion discarded.
 
-**Conditions** — an optional `if you have over N <resource>` (or `if you have N or more <resource>`) gate, e.g. `At the start of your turn, if you have over 3 energy, …` → `{ resource: 'energy', op: 'gt', amount: 3 }`.
+**Conditions** — an optional gate. `over N` / `more than N` are **strict** (`op: 'gt'`); `N or more` / `N or greater` are **inclusive** (`op: 'gte'`) — the `or` is what distinguishes them. E.g. `…, if you have over 3 energy, …` → `{ resource: 'energy', op: 'gt', amount: 3 }`, and `…, if you have 5 or more block, …` → `{ resource: 'block', op: 'gte', amount: 5 }`.
+
+**Two resolvers, one AST.** On-play effects go through `dsl/resolver.ts`; effects *inside a trigger* go through `resolveTriggerEffect` in `match/compile-persistent.ts`, which resolves with state in hand (so scaling is computed there). A verb that varies its action by noun has to be taught to **both** — `discard` needs its minion/card/hand split in each, or a trigger silently does the wrong one.
 
 **Targeting** — a trailing `to all opponents` / `to a random opponent` on a `deal` effect sets `target: 'allEnemies' | 'randomEnemy'`. Inside a trigger, a bare `deal` defaults to a random opponent; other effects (heal/gain/poison) apply to the persistent's owner. (On-play effects still hit `ctx.target`; targeting words there are currently ignored.)
 

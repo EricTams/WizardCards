@@ -51,6 +51,17 @@ export interface DiscardCards {
   readonly count: number;
 }
 
+/**
+ * Discard `owner`'s whole hand. A real discard, so it counts toward the turn's
+ * discard total and sets off Claw on every card that carries it — which is the
+ * point of the Crab cards that use it.
+ */
+export interface DiscardHand {
+  readonly type: 'DiscardHand';
+  /** Whose hand. Defaults to the player when omitted. */
+  readonly owner?: EntityId;
+}
+
 /** Move a specific card from `owner`'s hand (by index) to their discard pile. */
 export interface MoveHandCardToDiscard {
   readonly type: 'MoveHandCardToDiscard';
@@ -241,6 +252,7 @@ export type Action =
   | Drink
   | SummonMinion
   | DiscardMinion
-  | ClearTurnCounters;
+  | ClearTurnCounters
+  | DiscardHand;
 
 export type ActionType = Action['type'];
