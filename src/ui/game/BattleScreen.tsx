@@ -20,7 +20,7 @@ import {
 import type { Combatant, GameEvent, GameState, MinionState } from '@engine/index';
 import type { CardId, CloudType, EntityId } from '@shared/index';
 import { Sprite } from '@ui/game/Sprite';
-import { heroSprite, cloudSprite, cardArtUrl, CARD_ART_W, CARD_ART_H, SPRITE_CSS } from '@ui/game/art';
+import { heroSprite, cloudSprite, cardArtUrl, CARD_ART_W, CARD_ART_H, SPRITE_CSS, CARD_POINTER } from '@ui/game/art';
 import { describeEvents, nameMap, type LogEntry, type LogSide } from '@ui/game/combatLog';
 import { impactsFromEvents, impactAnchor, sceneAnchor } from '@ui/game/effects';
 import { EffectsLayer, EFFECTS_CSS, type Flyer, type Pop, type StagedCard } from '@ui/game/EffectsLayer';
@@ -846,8 +846,12 @@ function Hand({
   onLeaveCard?: () => void;
 }) {
   const interactive = !locked && (phase === 'playerTurn' || phase === 'mulligan');
+  // The cards overlap in the fan, so the hand points at whichever one a click
+  // would actually land on.
+  const [hovered, setHovered] = useState<number | null>(null);
   return (
     <div
+      onMouseLeave={() => setHovered(null)}
       style={{
         position: 'absolute',
         left: 0,
@@ -878,8 +882,12 @@ function Hand({
             picked={picked}
             dimmed={!affordable}
             hidden={i === hideIndex}
+            pointed={interactive && i === hovered && i !== hideIndex}
             onClick={() => interactive && onCard(i)}
-            onHover={(el) => onHoverCard?.(id, el)}
+            onHover={(el) => {
+              setHovered(i);
+              onHoverCard?.(id, el);
+            }}
             onLeave={() => onLeaveCard?.()}
           />
         );
@@ -897,6 +905,7 @@ function HandCard({
   picked,
   dimmed,
   hidden = false,
+  pointed = false,
   onClick,
   onHover,
   onLeave,
@@ -909,6 +918,8 @@ function HandCard({
   picked: boolean;
   dimmed: boolean;
   hidden?: boolean;
+  /** The cursor is over this card — show the pointing hand above it. */
+  pointed?: boolean;
   onClick: () => void;
   onHover?: (el: HTMLElement) => void;
   onLeave?: () => void;
@@ -933,10 +944,26 @@ function HandCard({
         transition: 'transform 120ms ease',
         cursor: 'pointer',
         position: 'relative',
+        // Lift above the neighbouring cards so the pointer isn't clipped by them.
+        zIndex: pointed ? 1 : undefined,
         visibility: hidden ? 'hidden' : 'visible',
         filter: dimmed ? 'grayscale(.6) brightness(.8)' : 'none',
       }}
     >
+      {pointed && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            marginBottom: 4,
+            pointerEvents: 'none',
+          }}
+        >
+          <Sprite sprite={CARD_POINTER} scale={2} animate={false} />
+        </div>
+      )}
       <img
         src={artUrl}
         alt={name}

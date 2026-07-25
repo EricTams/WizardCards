@@ -61,6 +61,13 @@ export function cloudSprite(type: CloudType): Sprite {
   return sheet(`art/other/Small Clouds-${CLOUD_LABEL[type]}.png`, 48, 48, 2, 900);
 }
 
+/**
+ * The hand that points at the card under the cursor — the fanned cards overlap,
+ * so it disambiguates which one a click will play. A single static frame (the
+ * finger points down), so it sits above the card.
+ */
+export const CARD_POINTER = sheet('art/other/Card Pointer-Hand.png', 32, 48, 1, 0);
+
 /** The card-face art for a card, chosen by its character-prefixed id. */
 export function cardArtUrl(card: { readonly id: string; readonly name: string }): string {
   const isWizard = card.id.startsWith('wizard');
