@@ -187,7 +187,7 @@ export function startTurn(
 
 /**
  * End the player's turn: run end-of-turn persistents, Fog clouds force a discard
- * (unless Autumn suppresses it), then the turn ends. (Enemy turns / full turn
+ * (unless Fall suppresses it), then the turn ends. (Enemy turns / full turn
  * structure are Phase 2.)
  */
 export function endTurn(state: GameState, opts: { actorId?: EntityId } = {}): RunResult {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parse, compile } from '@cards/index';
 import type { CardScript } from '@cards/index';
-import { SPRING, SUMMER, STATIC, WINTER, AUTUMN } from '@cards/definitions/cloud-persistents';
+import { SPRING, SUMMER, STATIC, WINTER, FALL } from '@cards/definitions/cloud-persistents';
 import { ROT_AWAY, CONSUMING } from '@cards/definitions/wizard-persistents';
 
 function script(text: string): CardScript {
@@ -45,7 +45,7 @@ describe('trigger grammar', () => {
     expect(s.triggers[0]!.effects[0]).toMatchObject({ target: 'randomEnemy' });
   });
 
-  it('parses cloud modifiers (Winter, Autumn)', () => {
+  it('parses cloud modifiers (Winter, Fall)', () => {
     expect(script('Snow clouds heal 2 instead of 1.').modifiers[0]).toMatchObject({
       modifier: 'snowHealBonus',
       amount: 1,
@@ -74,7 +74,7 @@ describe('trigger grammar', () => {
   });
 
   it('every persistent card compiles to zero on-play actions', () => {
-    for (const card of [SPRING, SUMMER, STATIC, WINTER, AUTUMN, ROT_AWAY, CONSUMING]) {
+    for (const card of [SPRING, SUMMER, STATIC, WINTER, FALL, ROT_AWAY, CONSUMING]) {
       const compiled = compile(card.text);
       expect(compiled.ok, `"${card.text}" failed to compile`).toBe(true);
       if (compiled.ok) expect(compiled.value).toEqual([]);

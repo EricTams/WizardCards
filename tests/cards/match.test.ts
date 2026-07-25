@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildTestState, playCard, startTurn, endTurn, TEST_SELF, TEST_TARGET } from '@cards/index';
-import { SPRING, WINTER, STATIC, SUMMER, AUTUMN } from '@cards/definitions/cloud-persistents';
+import { SPRING, WINTER, STATIC, SUMMER, FALL } from '@cards/definitions/cloud-persistents';
 import { ROT_AWAY, CONSUMING } from '@cards/definitions/wizard-persistents';
 import { THUNDER, SHINE } from '@cards/definitions/cloud';
 import { STUN, THROW, ALCHEMY } from '@cards/definitions/wizard';
@@ -91,8 +91,8 @@ describe('end of turn', () => {
     expect(after.phase).toBe('enemyTurn');
   });
 
-  it('Autumn suppresses the Fog discard', () => {
-    const state = buildTestState({ player: { clouds: ['fog'], persistents: [AUTUMN.id] }, hand: ['a', 'b'] as CardId[] });
+  it('Fall suppresses the Fog discard', () => {
+    const state = buildTestState({ player: { clouds: ['fog'], persistents: [FALL.id] }, hand: ['a', 'b'] as CardId[] });
     const { state: after } = endTurn(state);
     expect(after.player.hand).toHaveLength(2);
     expect(after.player.discardPile).toHaveLength(0);

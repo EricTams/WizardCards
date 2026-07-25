@@ -22,7 +22,7 @@ Phased plan. **We are at the end of Phase 0.** The *game design* now exists — 
   - ✅ **Trigger grammar:** persistents are authored in English — `When[ever]/At <event>[, if <condition>], <effects>` + cloud modifiers + `to all/random opponent` targeting — and compiled to behavior (`compilePersistent`). `CardScript` now splits into `effects`/`triggers`/`modifiers`.
   - ✅ **Scaling:** `deal damage equal to your <resource>` and `deal N damage for each [unique] cloud/minion`, resolved in the reducer (`DealDamageScaled` + `metricValue`). Electrocute, Spin, Crystal Ball, Hurl.
   - ⏳ Still open: scaling on non-`deal` effects, more trigger events/conditions, and on-play AoE targeting.
-- ✅ **Trigger & turn system** (`src/cards/match`, `docs/triggers.md`): per-turn cloud firing, minion replay, and reactive/conditional Persistents (Winter/Autumn/Spring/Summer/Static, Rot Away/Consuming), resolved as a deterministic cascade above the atomic engine. `playCard`/`startTurn`/`endTurn`.
+- ✅ **Trigger & turn system** (`src/cards/match`, `docs/triggers.md`): per-turn cloud firing, minion replay, and reactive/conditional Persistents (Winter/Fall/Spring/Summer/Static, Rot Away/Consuming), resolved as a deterministic cascade above the atomic engine. `playCard`/`startTurn`/`endTurn`.
 - Grow the atomic-action set and status/effect modeling on combatants.
   - ✅ `Combatant` now carries `block`/`shield`/`energy`/`poison`/`power`/`bravery`/`clouds`/`minions`/`persistents`; actions added for each (see `docs/atomic-actions.md`). Damage soaks block → shield → hp.
 - ✅ **Per-card tests:** declarative, serializable `CardTest` specs + a pure `runCardTest` runner, run by Vitest and authorable in the Card Lab (`docs/card-testing.md`).

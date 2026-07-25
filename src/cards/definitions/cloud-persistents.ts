@@ -3,7 +3,7 @@
  *
  * These used to be code-defined; now their behavior is parsed from their `text`
  * by the trigger grammar (`docs/triggers.md`, `docs/card-dsl.md`). Winter and
- * Autumn are *modifier* persistents (they change how a rule behaves rather than
+ * Fall are *modifier* persistents (they change how a rule behaves rather than
  * firing an effect); Spring/Summer/Static are trigger→effect persistents.
  */
 import { cardId } from '@shared/index';
@@ -16,9 +16,15 @@ export const WINTER: CardDef = {
   text: 'Snow clouds heal 2 instead of 1.',
 };
 
-export const AUTUMN: CardDef = {
+/**
+ * Named "Fall" to match its art (`Cloud Cards-Fall.png`) — cardArtUrl() builds
+ * the file name from `name`, so the two must agree. The id keeps the older
+ * `cloud-autumn` slug: ids key Card Lab overrides in localStorage, and renaming
+ * one silently orphans a player's saved edits.
+ */
+export const FALL: CardDef = {
   id: cardId('cloud-autumn'),
-  name: 'Autumn',
+  name: 'Fall',
   cost: 1,
   text: 'Fog clouds no longer force a discard.',
 };
@@ -44,4 +50,4 @@ export const STATIC: CardDef = {
   text: 'Whenever a lightning cloud is removed, deal 2 damage to all opponents.',
 };
 
-export const CLOUD_PERSISTENTS: readonly CardDef[] = [WINTER, AUTUMN, SPRING, SUMMER, STATIC];
+export const CLOUD_PERSISTENTS: readonly CardDef[] = [WINTER, FALL, SPRING, SUMMER, STATIC];

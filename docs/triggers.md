@@ -34,13 +34,13 @@ applyWithTriggers(state, action):
 Some events carry extra data precisely so triggers can key off them: `DamageDealt.unblocked` (Rot Away — "unblocked damage") and `CloudsRemoved.removed` (Static — "a Lightning cloud is removed").
 
 ### Phase — start / end of turn
-`startTurn` sequences: advance the turn → clear temporary block → fire each **cloud** (Lightning→energy, Snow→heal, Storm→damage a random enemy, Fog→draw) → run start-of-turn persistents (Summer) → **replay each minion** (its compiled text minus re-summoning itself) → draw. `endTurn` makes Fog clouds force a discard (unless Autumn) and ends the turn. Each step resolves its own reactive cascade before the next.
+`startTurn` sequences: advance the turn → clear temporary block → fire each **cloud** (Lightning→energy, Snow→heal, Storm→damage a random enemy, Fog→draw) → run start-of-turn persistents (Summer) → **replay each minion** (its compiled text minus re-summoning itself) → draw. `endTurn` makes Fog clouds force a discard (unless Fall) and ends the turn. Each step resolves its own reactive cascade before the next.
 
 ## Persistents — authored in English
 
-Persistents are **ordinary cards, authored in English** (`src/cards/definitions/cloud-persistents.ts`, `wizard-persistents.ts`) and registered in `ALL_CARDS` like everything else. `compilePersistent(text)` (`src/cards/match/compile-persistent.ts`) parses the trigger grammar (`docs/card-dsl.md`) into the hooks the orchestrator consults: `onEvent` (reactive), `onStartTurn`/`onEndTurn` (phase), and the modifiers `snowHealBonus` (Winter) / `suppressFogDiscard` (Autumn). Compilation is memoized by card id since text is static.
+Persistents are **ordinary cards, authored in English** (`src/cards/definitions/cloud-persistents.ts`, `wizard-persistents.ts`) and registered in `ALL_CARDS` like everything else. `compilePersistent(text)` (`src/cards/match/compile-persistent.ts`) parses the trigger grammar (`docs/card-dsl.md`) into the hooks the orchestrator consults: `onEvent` (reactive), `onStartTurn`/`onEndTurn` (phase), and the modifiers `snowHealBonus` (Winter) / `suppressFogDiscard` (Fall). Compilation is memoized by card id since text is static.
 
-Modeled today: **Winter, Autumn, Spring, Summer, Static** (Cloud) and **Rot Away, Consuming** (Wizard). Because a persistent's statements are all triggers/modifiers, `compile()` yields **zero on-play actions** — playing/registering one does nothing until it's in the play area. `PERSISTENT_CARDS` is the subset of the registry that behaves this way.
+Modeled today: **Winter, Fall, Spring, Summer, Static** (Cloud) and **Rot Away, Consuming** (Wizard). Because a persistent's statements are all triggers/modifiers, `compile()` yields **zero on-play actions** — playing/registering one does nothing until it's in the play area. `PERSISTENT_CARDS` is the subset of the registry that behaves this way.
 
 To add a persistent, write its English text as a card and it just works — no code, provided the trigger grammar covers its wording. Behavior that the grammar can't yet express (e.g. Wild Wind's cloud churn, "replayed N extra times") is the remaining gap, not the persistents themselves.
 

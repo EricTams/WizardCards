@@ -150,7 +150,7 @@ The Cloud creates Smaller Clouds that trigger small effects at the start of The 
 |-|-|-|
 |1|**Winter**|Snow Clouds heal 2 HP instead of 1|
 |2|**Spring**|Whenever you create a cloud, deal 1 Damage to all opponents|
-|3|**Autumn**|Fog Clouds no longer force you to discard|
+|3|**Fall**|Fog Clouds no longer force you to discard|
 |4|**Summer**|If you start with over 3 energy on your turn, deal 4 Damage to all opponents|
 |5|**Wild Wind**|Replace a Random Cloud with another Random Cloud at the end of your turn|
 |6|**Windmill**|At the end of your turn, fill all empty Cloud Slots with Random Clouds|
@@ -177,7 +177,7 @@ The Crab takes advantage of discarding cards by having cards that are played whe
 |5|**Smack**|Deal 2 Damage — The next card you discard with Claw is played twice|
 |6|**Locator**|*Claw* — Deal 1 Damage for each card discarded this turn|
 |7|**Swipe**|*Claw* — Draw 2 Cards, Deal 6 Damage|
-|8|**Crust Kick**|*Claw* — Deal 2 Damage, Put this card back into your hand|
+|8|**Sand Kick**|*Claw* — Deal 2 Damage, Put this card back into your hand|
 |9|**Tentacles**|Gain 1 Energy, Deal 4 Damage — Shuffle this into your draw pile|
 
 ## Skills
@@ -190,7 +190,7 @@ The Crab takes advantage of discarding cards by having cards that are played whe
 |13|**Waterspout**|Heal 1, Draw 1, Discard 1|
 |14|**Glacial Melt**|*Claw* — Draw 1, Gain 1 Energy|
 |15|**Hook**|*Claw* — Gain 2 Energy|
-|16|**Molt**|Draw 3|
+|16|**Ecdycis**|Draw 3|
 |17|**Refresh**|Gain 1 Energy, Discard your hand, Draw 3 Cards|
 |18|**Double Draw**|Draw 2, Discard 2|
 |19|**Sandbed**|Heal 1, Gain 4 Shields|
@@ -213,7 +213,7 @@ The Crab takes advantage of discarding cards by having cards that are played whe
 
 |#|Name|Effect|
 |-|-|-|
-|34|**Barnacle**|The first card you discard on your turn plays twice the next time you play it|
+|34|**Giant Barnacle**|The first card you discard on your turn plays twice the next time you play it|
 |35|**Exoskeleton**|If you have 5+ block at the end of your turn, discard your hand and draw 4 cards|
 |36|**Decapod**|If you discard 10 Cards on your turn, deal 10 Damage to all opponents|
 |37|**Crab Trap**|At the start of your turn, draw 1 additional card|
@@ -378,7 +378,7 @@ Works with Unplayable cards, "burning" them for effects, and building Bravery to
 |3|**Dispose**|*Unplayable* — Deal 4 Damage|
 |4|**Dumpster Diver**|Burn 1 — Deal 2 Damage|
 |5|**Type**|Find — Draw 2 — Deal 2 Damage|
-|6|**Scrap**|*Unplayable* — Deal 1 Damage to all opponents|
+|6|**Junk**|*Unplayable* — Deal 1 Damage to all opponents|
 |7|**Rescue**|Gain 1 Energy — Find — Draw 1 — Deal 3 Damage|
 |8|**Brain Storm**|Deal Damage equal to your bravery. Set your bravery to Zero|
 
@@ -391,8 +391,8 @@ Works with Unplayable cards, "burning" them for effects, and building Bravery to
 |11|**Quill**|Gain 4 Shields, Gain 1 Bravery|
 |12|**Look**|Find — Draw 2 — Heal 3|
 |13|**Notes**|*Unplayable* — Gain 2 Shields|
-|14|**Draft**|*Unplayable* — Draw 1, Gain 1 Bravery|
-|15|**Treasure**|Burn 2 — Heal 3|
+|14|**Rough Draft**|*Unplayable* — Draw 1, Gain 1 Bravery|
+|15|**Trophy**|Burn 2 — Heal 3|
 |16|**Scribble**|*Unplayable* — Gain 1 Energy|
 |17|**Refresh**|Burn 3 — Draw 3|
 |18|**Evade**|Burn 2 — Gain 3 Bravery|
@@ -415,7 +415,7 @@ Works with Unplayable cards, "burning" them for effects, and building Bravery to
 |#|Name|Effect|
 |-|-|-|
 |32|**Ink**|When you Burn an Unplayable Card, deal 2 Damage to all opponents|
-|33|**Shake Spear**|When you draw an additional card on your turn, deal 2 damage to a random enemy|
+|33|**Shake-Spear**|When you draw an additional card on your turn, deal 2 damage to a random enemy|
 |34|**Pass**|Cards with Burn cost 1 Less Burn to Play|
 |35|**Whiteboard**|Gain Block for each New Unplayable Card in your Hand at the end of your turn|
 |36|**Strategy**|When you draw an Unplayable card, draw 1 additional card|

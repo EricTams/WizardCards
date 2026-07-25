@@ -88,7 +88,7 @@ export interface TriggerNode {
   readonly end: number;
 }
 
-/** Static rule changes that aren't trigger→effect (Winter, Autumn). */
+/** Static rule changes that aren't trigger→effect (Winter, Fall). */
 export interface ModifierNode {
   readonly kind: 'Modifier';
   readonly modifier: 'snowHealBonus' | 'suppressFogDiscard';
