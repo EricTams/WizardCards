@@ -11,6 +11,7 @@
 import { metricValue, type Action, type GameEvent, type GameState } from '@engine/index';
 import { parse } from '@cards/dsl/parser';
 import type { EffectNode, TriggerCondition, TriggerNode } from '@cards/dsl/ast';
+import { CLOUD_CAP } from '@cards/match/content';
 
 export interface PersistentBehavior {
   readonly onEvent?: (state: GameState, event: GameEvent) => Action[];
@@ -115,10 +116,14 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
     case 'draw':
       return [{ type: 'DrawCards', count: amount }];
     case 'create':
+      if (effect.noun === 'randomClouds') return [{ type: 'CreateRandomClouds', target: self, count: amount }];
       return [{ type: 'CreateClouds', target: self, cloudType: effect.cloudType!, count: amount }];
+    case 'fill':
+      return [{ type: 'FillCloudSlots', target: self, baseCap: CLOUD_CAP }];
     case 'remove':
       // Mirrors the on-play resolver — see the note on `discard` below.
       if (effect.noun === 'allClouds') return [{ type: 'RemoveAllClouds', target: self }];
+      if (effect.noun === 'randomClouds') return [{ type: 'RemoveRandomClouds', target: self, count: amount }];
       return [{ type: 'RemoveClouds', target: self, count: amount }];
     case 'increase':
       return [{ type: 'IncreaseMaxClouds', target: self, amount }];

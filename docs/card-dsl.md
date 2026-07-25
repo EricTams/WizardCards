@@ -28,8 +28,9 @@ gain    <number> RESOURCE          RESOURCE ∈ block | shield | energy | power 
 heal    <number> [noun]            trailing noun ("HP") is decorative
 poison  <number>
 draw    <number> ["card"]
-create  <number> CLOUD "cloud"     CLOUD ∈ lightning | storm | snow | fog
-remove  <number> "cloud" | remove "all clouds"
+create  <number> CLOUD "cloud"     CLOUD ∈ lightning | storm | snow | fog | random
+fill    "all empty cloud slots"
+remove  <number> ["random"] "cloud" | remove "all clouds"
 increase "max clouds by" <number>
 discard <number> ("minion" | "card") | discard "your hand"
 "venom" | "drink" | "minion"       bare keyword effects (no number/noun)
@@ -47,6 +48,9 @@ discard <number> ("minion" | "card") | discard "your hand"
 | `Create 2 storm clouds.`   | `{ verb:'create', amount:2, cloudType:'storm' }`    | `CreateClouds(self, 'storm', 2)`           |
 | `Remove 1 cloud.`          | `{ verb:'remove', amount:1, noun:'cloud' }`         | `RemoveClouds(self, 1)`                    |
 | `Remove all clouds.`       | `{ verb:'remove', noun:'allClouds' }`                | `RemoveAllClouds(self)`                    |
+| `Create 1 random cloud.`   | `{ verb:'create', amount:1, noun:'randomClouds' }`   | `CreateRandomClouds(self, 1)`              |
+| `Remove 1 random cloud.`   | `{ verb:'remove', amount:1, noun:'randomClouds' }`   | `RemoveRandomClouds(self, 1)`              |
+| `Fill all empty cloud slots with random clouds.` | `{ verb:'fill', noun:'cloudSlots' }` | `FillCloudSlots(self, CLOUD_CAP)`   |
 | `Increase max clouds by 1.`| `{ verb:'increase', amount:1, noun:'maxClouds' }`    | `IncreaseMaxClouds(self, 1)`               |
 | `Discard 1 minion.`        | `{ verb:'discard', amount:1, noun:'minion' }`       | `DiscardMinion(self, 1)`                   |
 | `Discard 2 cards.`         | `{ verb:'discard', amount:2, noun:'card' }`         | `DiscardCards(self, 2)`                    |
@@ -81,6 +85,8 @@ Parsing has two levels: text splits into **sentences** on `.`/`;`, and each sent
 The when-phrase is matched by keywords, so wording is forgiving. A reactive trigger fires **once per unit** — per cloud created, per matching cloud removed, per minion discarded.
 
 **Conditions** — an optional gate. `over N` / `more than N` are **strict** (`op: 'gt'`); `N or more` / `N or greater` are **inclusive** (`op: 'gte'`) — the `or` is what distinguishes them. E.g. `…, if you have over 3 energy, …` → `{ resource: 'energy', op: 'gt', amount: 3 }`, and `…, if you have 5 or more block, …` → `{ resource: 'block', op: 'gte', amount: 5 }`.
+
+**Random clouds.** A `random` cloud type carries no `cloudType` — the reducer draws one through `state.rng`, so the same seed reproduces the same weather and the action log stays the source of truth. `CreateRandomClouds` emits one `CloudsCreated` per cloud rather than one batched event, since the types differ and "whenever you create a cloud" fires per cloud. `FillCloudSlots` is handed `CLOUD_CAP` as its `baseCap` because the limit is a cards-layer rule; the engine adds the combatant's own bonus.
 
 **Cloud cap.** `Increase max clouds by N` raises only the *bonus* (`Combatant.bonusMaxClouds`); the base limit is `CLOUD_CAP` in the cards layer, since the engine holds no game rules. Read the effective limit with `cloudCapFor(combatant)` — using the bare constant anywhere the cap is enforced or displayed makes a widened cap silently do nothing.
 

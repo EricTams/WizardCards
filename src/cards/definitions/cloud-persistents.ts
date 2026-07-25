@@ -50,4 +50,19 @@ export const STATIC: CardDef = {
   text: 'Whenever a lightning cloud is removed, deal 2 damage to all opponents.',
 };
 
-export const CLOUD_PERSISTENTS: readonly CardDef[] = [WINTER, FALL, SPRING, SUMMER, STATIC];
+/** Churn the sky: swap one cloud for a fresh random one each turn. */
+export const WILD_WIND: CardDef = {
+  id: cardId('cloud-wild-wind'),
+  name: 'Wild Wind',
+  cost: 1,
+  text: 'At the end of your turn, remove 1 random cloud, create 1 random cloud.',
+};
+
+export const WINDMILL: CardDef = {
+  id: cardId('cloud-windmill'),
+  name: 'Windmill',
+  cost: 1,
+  text: 'At the end of your turn, fill all empty cloud slots with random clouds.',
+};
+
+export const CLOUD_PERSISTENTS: readonly CardDef[] = [WINTER, FALL, SPRING, SUMMER, STATIC, WILD_WIND, WINDMILL];

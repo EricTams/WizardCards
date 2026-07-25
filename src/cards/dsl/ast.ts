@@ -32,6 +32,7 @@ export type Verb =
   | 'create'
   | 'remove'
   | 'increase'
+  | 'fill'
   // minion effects
   | 'discard'
   // bare keyword effects (no amount / noun)

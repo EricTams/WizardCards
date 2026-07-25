@@ -185,6 +185,18 @@ export function apply(state: GameState, action: Action): ApplyResult {
     case 'RemoveClouds':
       return removeClouds(state, action.target, action.count);
 
+    case 'CreateRandomClouds':
+      return createRandomClouds(state, action.target, action.count);
+
+    case 'RemoveRandomClouds':
+      return removeRandomClouds(state, action.target, action.count);
+
+    case 'FillCloudSlots': {
+      const c = findCombatant(state, action.target);
+      const cap = action.baseCap + (c?.bonusMaxClouds ?? 0);
+      return createRandomClouds(state, action.target, Math.max(0, cap - (c?.clouds.length ?? 0)));
+    }
+
     case 'RemoveAllClouds':
       return removeClouds(state, action.target, findCombatant(state, action.target)?.clouds.length ?? 0);
 
@@ -411,6 +423,47 @@ function createClouds(
     state: mapCombatant(state, target, (c) => ({ ...c, clouds: [...c.clouds, ...added] })),
     events: [{ type: 'CloudsCreated', target, cloudType, count: added.length }],
   };
+}
+
+const CLOUD_KINDS: readonly CloudType[] = ['lightning', 'storm', 'snow', 'fog'];
+
+/**
+ * Create `count` clouds of random types, threading the RNG through each draw so
+ * the whole thing stays a pure function of (state, action).
+ *
+ * Emits one `CloudsCreated` per cloud rather than one batched event, because
+ * "whenever you create a cloud" (Spring) fires per cloud and the types differ.
+ */
+function createRandomClouds(state: GameState, target: EntityId, count: number): ApplyResult {
+  let rng = state.rng;
+  const added: CloudType[] = [];
+  for (let i = 0; i < Math.max(0, count); i++) {
+    const pick = nextInt(rng, 0, CLOUD_KINDS.length - 1);
+    rng = pick.state;
+    added.push(CLOUD_KINDS[pick.value]!);
+  }
+  const next = mapCombatant(state, target, (c) => ({ ...c, clouds: [...c.clouds, ...added] }));
+  return {
+    state: { ...next, rng },
+    events: added.map((cloudType) => ({ type: 'CloudsCreated', target, cloudType, count: 1 })),
+  };
+}
+
+/** Remove `count` clouds chosen at random (Wild Wind), newest-first being wrong here. */
+function removeRandomClouds(state: GameState, target: EntityId, count: number): ApplyResult {
+  const current = findCombatant(state, target);
+  if (!current) return { state, events: [{ type: 'CloudsRemoved', target, count: 0, removed: [] }] };
+  let rng = state.rng;
+  let clouds = current.clouds.slice();
+  const removed: CloudType[] = [];
+  for (let i = 0; i < Math.max(0, count) && clouds.length > 0; i++) {
+    const pick = nextInt(rng, 0, clouds.length - 1);
+    rng = pick.state;
+    removed.push(clouds[pick.value]!);
+    clouds = clouds.filter((_, j) => j !== pick.value);
+  }
+  const next = mapCombatant(state, target, (c) => ({ ...c, clouds }));
+  return { state: { ...next, rng }, events: [{ type: 'CloudsRemoved', target, count: removed.length, removed }] };
 }
 
 function removeClouds(state: GameState, target: EntityId, count: number): ApplyResult {

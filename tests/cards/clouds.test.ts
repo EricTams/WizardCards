@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { buildTestState, playFromHand, capClouds, cloudCapFor, CLOUD_CAP, TEST_SELF } from '@cards/index';
-import { OUTBURST, SPATIAL_REASONING, DISSOLVE } from '@cards/definitions/cloud';
+import { buildTestState, playFromHand, endTurn, capClouds, cloudCapFor, CLOUD_CAP, TEST_SELF } from '@cards/index';
+import { OUTBURST, SPATIAL_REASONING, DISSOLVE, RISE_AND_SHINE, LUNAR_WEATHER } from '@cards/definitions/cloud';
+import { WILD_WIND, WINDMILL } from '@cards/definitions/cloud-persistents';
 
 describe('remove all clouds (Dissolve)', () => {
   it('deals 2 per cloud held, then wipes them', () => {
@@ -53,5 +54,64 @@ describe('increase max clouds', () => {
       player: { ...base.player, bonusMaxClouds: 1, clouds: ['storm', 'fog', 'snow', 'lightning'] as const },
     };
     expect(capClouds(widened, TEST_SELF).state.player.clouds).toHaveLength(CLOUD_CAP + 1);
+  });
+});
+
+describe('random cloud generation', () => {
+  it('Lunar Weather swaps one cloud for a random one', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [LUNAR_WEATHER.id], clouds: ['storm', 'fog'] },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 0);
+    expect(after.player.clouds).toHaveLength(2); // removed 1, created 1
+  });
+
+  it('Rise and Shine fills empty slots up to the cap, and no further', () => {
+    const state = buildTestState({ player: { energy: 5, hand: [RISE_AND_SHINE.id], clouds: ['storm'] } });
+    const { state: after } = playFromHand(state, TEST_SELF, 0);
+    expect(after.player.clouds).toHaveLength(CLOUD_CAP);
+    expect(after.player.clouds[0]).toBe('storm'); // the one you had is untouched
+  });
+
+  it('Rise and Shine respects a widened cap', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [RISE_AND_SHINE.id], clouds: [], bonusMaxClouds: 2 },
+    });
+    expect(playFromHand(state, TEST_SELF, 0).state.player.clouds).toHaveLength(CLOUD_CAP + 2);
+  });
+
+  it('Rise and Shine does nothing when already full', () => {
+    const full = ['storm', 'fog', 'snow'] as const;
+    const state = buildTestState({ player: { energy: 5, hand: [RISE_AND_SHINE.id], clouds: full } });
+    expect(playFromHand(state, TEST_SELF, 0).state.player.clouds).toEqual([...full]);
+  });
+
+  it('Windmill refills at end of turn', () => {
+    const state = buildTestState({ player: { persistents: [WINDMILL.id], clouds: ['snow'] } });
+    expect(endTurn(state).state.player.clouds.length).toBeGreaterThanOrEqual(CLOUD_CAP);
+  });
+
+  it('Wild Wind keeps the cloud count steady while churning it', () => {
+    const state = buildTestState({ player: { persistents: [WILD_WIND.id], clouds: ['snow', 'fog'] } });
+    expect(endTurn(state).state.player.clouds).toHaveLength(2);
+  });
+
+  it('stays deterministic: same seed, same weather — and advances the RNG', () => {
+    const make = () =>
+      buildTestState({ seed: 'weather', player: { energy: 5, hand: [RISE_AND_SHINE.id], clouds: [] } });
+    const a = playFromHand(make(), TEST_SELF, 0).state;
+    const b = playFromHand(make(), TEST_SELF, 0).state;
+    expect(a.player.clouds).toEqual(b.player.clouds);
+    expect(a.rng).not.toBe(make().rng); // the draws actually consumed randomness
+    expect(JSON.parse(JSON.stringify(a))).toEqual(a); // still plain data
+  });
+
+  it('does not always roll the same cloud type', () => {
+    const kinds = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const s = buildTestState({ seed: `w${i}`, player: { energy: 5, hand: [RISE_AND_SHINE.id], clouds: [] } });
+      playFromHand(s, TEST_SELF, 0).state.player.clouds.forEach((c) => kinds.add(c));
+    }
+    expect(kinds.size).toBeGreaterThan(1);
   });
 });

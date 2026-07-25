@@ -359,6 +359,12 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       const amount = expectNumber(group, 1, head, diagnostics);
       const typeTok = expectWord(group, 2, group[1] ?? head, diagnostics);
       if (amount === null || typeTok === null) return null;
+      // "Create 1 random cloud" picks its type at reduce time, so it carries no
+      // cloudType — the reducer draws one through the in-state RNG.
+      if (typeTok.value.toLowerCase() === 'random') {
+        const lastTok = group[3] && group[3].type === 'word' ? group[3] : typeTok;
+        return { kind: 'Effect', verb: 'create', amount, noun: 'randomClouds', ...span(head, lastTok) };
+      }
       const cloudType = CLOUD_TYPES[singular(typeTok.value)];
       if (!cloudType) {
         diagnostics.push(diag(`Unknown cloud type "${typeTok.value}". Try lightning, storm, snow, or fog.`, typeTok));
@@ -373,7 +379,22 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'all')) {
         return { kind: 'Effect', verb: 'remove', noun: 'allClouds', ...span(head, last) };
       }
+      if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'random')) {
+        const n = expectNumber(group, 1, head, diagnostics);
+        if (n === null) return null;
+        return { kind: 'Effect', verb: 'remove', amount: n, noun: 'randomClouds', ...span(head, last) };
+      }
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
+    }
+    case 'fill': {
+      // Only "fill all empty cloud slots [with random clouds]" is understood.
+      const last = group[group.length - 1]!;
+      const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
+      if (!words.includes('cloud') && !words.includes('clouds')) {
+        diagnostics.push(diag('Only "fill all empty cloud slots with random clouds" is supported.', head));
+        return null;
+      }
+      return { kind: 'Effect', verb: 'fill', noun: 'cloudSlots', ...span(head, last) };
     }
     case 'increase': {
       // Only "increase max clouds by N" is understood today.

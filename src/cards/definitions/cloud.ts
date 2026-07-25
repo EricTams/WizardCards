@@ -222,6 +222,20 @@ export const DISSOLVE: CardDef = {
   text: 'Deal 2 damage for each cloud. Remove all clouds.',
 };
 
+export const RISE_AND_SHINE: CardDef = {
+  id: cardId('cloud-rise-and-shine'),
+  name: 'Rise and Shine',
+  cost: 1,
+  text: 'Fill all empty cloud slots with random clouds.',
+};
+
+export const LUNAR_WEATHER: CardDef = {
+  id: cardId('cloud-lunar-weather'),
+  name: 'Lunar Weather',
+  cost: 1,
+  text: 'Remove 1 cloud. Create 1 random cloud.',
+};
+
 /** Every Cloud card in this batch, in table order. */
 export const CLOUD_CARDS: readonly CardDef[] = [
   SUN_RAY,
@@ -253,4 +267,6 @@ export const CLOUD_CARDS: readonly CardDef[] = [
   OUTBURST,
   SPATIAL_REASONING,
   DISSOLVE,
+  RISE_AND_SHINE,
+  LUNAR_WEATHER,
 ];

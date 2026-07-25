@@ -186,6 +186,35 @@ export interface RemoveClouds {
   readonly count: number;
 }
 
+/**
+ * Create `count` clouds of randomly-chosen types. The draw runs through the
+ * in-state RNG inside the reducer, so the same seed reproduces the same weather.
+ */
+export interface CreateRandomClouds {
+  readonly type: 'CreateRandomClouds';
+  readonly target: EntityId;
+  readonly count: number;
+}
+
+/** Remove `count` clouds picked at random (vs RemoveClouds' newest-first). */
+export interface RemoveRandomClouds {
+  readonly type: 'RemoveRandomClouds';
+  readonly target: EntityId;
+  readonly count: number;
+}
+
+/**
+ * Fill every empty cloud slot with a random cloud (Rise and Shine, Windmill).
+ *
+ * `baseCap` is passed in because the limit is a *game rule* owned by the cards
+ * layer; the engine only knows the per-combatant bonus, and adds the two.
+ */
+export interface FillCloudSlots {
+  readonly type: 'FillCloudSlots';
+  readonly target: EntityId;
+  readonly baseCap: number;
+}
+
 /** Remove every cloud a combatant holds (Dissolve). */
 export interface RemoveAllClouds {
   readonly type: 'RemoveAllClouds';
@@ -268,6 +297,9 @@ export type Action =
   | ClearTurnCounters
   | DiscardHand
   | RemoveAllClouds
-  | IncreaseMaxClouds;
+  | IncreaseMaxClouds
+  | CreateRandomClouds
+  | RemoveRandomClouds
+  | FillCloudSlots;
 
 export type ActionType = Action['type'];

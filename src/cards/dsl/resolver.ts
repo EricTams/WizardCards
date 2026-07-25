@@ -11,6 +11,7 @@
 import { type Diagnostic, type Result, ok, err, type CardId, type EntityId } from '@shared/index';
 import type { Action } from '@engine/index';
 import type { CardScript, EffectNode } from '@cards/dsl/ast';
+import { CLOUD_CAP } from '@cards/match/content';
 
 /** Everything a producer might need that's only known when the card is played. */
 export interface PlayContext {
@@ -58,17 +59,24 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
     case 'increase':
       return (ctx) => ({ type: 'IncreaseMaxClouds', target: ctx.self, amount });
     case 'create':
+      if (effect.noun === 'randomClouds') {
+        return (ctx) => ({ type: 'CreateRandomClouds', target: ctx.self, count: amount });
+      }
       return (ctx) => ({
         type: 'CreateClouds',
         target: ctx.self,
         cloudType: effect.cloudType!,
         count: amount,
       });
+    case 'fill':
+      return (ctx) => ({ type: 'FillCloudSlots', target: ctx.self, baseCap: CLOUD_CAP });
     case 'remove':
       // "Remove all clouds" (Dissolve) vs a counted "Remove 3 clouds".
-      return effect.noun === 'allClouds'
-        ? (ctx) => ({ type: 'RemoveAllClouds', target: ctx.self })
-        : (ctx) => ({ type: 'RemoveClouds', target: ctx.self, count: amount });
+      if (effect.noun === 'allClouds') return (ctx) => ({ type: 'RemoveAllClouds', target: ctx.self });
+      if (effect.noun === 'randomClouds') {
+        return (ctx) => ({ type: 'RemoveRandomClouds', target: ctx.self, count: amount });
+      }
+      return (ctx) => ({ type: 'RemoveClouds', target: ctx.self, count: amount });
     case 'discard':
       // The noun picks the action: "discard 1 minion" (Wizard), "discard 1 card"
       // or "discard your hand" (Crab). The parser admits only these three.
