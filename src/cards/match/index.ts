@@ -164,7 +164,14 @@ export function runTurnCascade(
   // then add on top. Reset happens before clouds so "start with >3 energy" checks
   // (Summer) see the post-Lightning total.
   if (opts.resetEnergyTo !== undefined) run([{ type: 'SetEnergy', target: actorId, amount: opts.resetEnergyTo }]);
+  // Solar Power: clouds fire a second time this turn, then the flag is spent.
+  // Read before the first firing, since the actions below rewrite the combatant.
+  const playsTwice = combatantOf(current, actorId)?.cloudsPlayTwice ?? false;
   run(cloudEffects(current, actorId));
+  if (playsTwice) {
+    run(cloudEffects(current, actorId));
+    run([{ type: 'SetCloudsPlayTwice', target: actorId, value: false }]);
+  }
   // Persistents are modelled as the player's (`activePersistents` reads the player).
   if (isPlayer) run(activePersistents(current).flatMap((p) => (p.onStartTurn ? p.onStartTurn(current) : [])));
   const actor = combatantOf(current, actorId);

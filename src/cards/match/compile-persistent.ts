@@ -120,6 +120,8 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
       return [{ type: 'CreateClouds', target: self, cloudType: effect.cloudType!, count: amount }];
     case 'fill':
       return [{ type: 'FillCloudSlots', target: self, baseCap: CLOUD_CAP }];
+    case 'double':
+      return [{ type: 'SetCloudsPlayTwice', target: self, value: true }];
     case 'remove':
       // Mirrors the on-play resolver — see the note on `discard` below.
       if (effect.noun === 'allClouds') return [{ type: 'RemoveAllClouds', target: self }];

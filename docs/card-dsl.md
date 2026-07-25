@@ -30,6 +30,7 @@ poison  <number>
 draw    <number> ["card"]
 create  <number> CLOUD "cloud"     CLOUD ∈ lightning | storm | snow | fog | random
 fill    "all empty cloud slots"
+double  "your clouds next turn"
 remove  <number> ["random"] "cloud" | remove "all clouds"
 increase "max clouds by" <number>
 discard <number> ("minion" | "card") | discard "your hand"
@@ -88,6 +89,8 @@ The when-phrase is matched by keywords, so wording is forgiving. A reactive trig
 
 **Random clouds.** A `random` cloud type carries no `cloudType` — the reducer draws one through `state.rng`, so the same seed reproduces the same weather and the action log stays the source of truth. `CreateRandomClouds` emits one `CloudsCreated` per cloud rather than one batched event, since the types differ and "whenever you create a cloud" fires per cloud. `FillCloudSlots` is handed `CLOUD_CAP` as its `baseCap` because the limit is a cards-layer rule; the engine adds the combatant's own bonus.
 
+**Duration effects.** `Double your clouds next turn.` (Solar Power) sets `Combatant.cloudsPlayTwice`; the start-of-turn cascade fires `cloudEffects` a second time and then clears the flag, so it lasts exactly one turn. The flag is read *before* the first firing, since the cloud actions rewrite the combatant.
+
 **Cloud cap.** `Increase max clouds by N` raises only the *bonus* (`Combatant.bonusMaxClouds`); the base limit is `CLOUD_CAP` in the cards layer, since the engine holds no game rules. Read the effective limit with `cloudCapFor(combatant)` — using the bare constant anywhere the cap is enforced or displayed makes a widened cap silently do nothing.
 
 **Two resolvers, one AST.** On-play effects go through `dsl/resolver.ts`; effects *inside a trigger* go through `resolveTriggerEffect` in `match/compile-persistent.ts`, which resolves with state in hand (so scaling is computed there). A verb that varies its action by noun has to be taught to **both** — `discard` needs its minion/card/hand split in each, or a trigger silently does the wrong one.
@@ -108,8 +111,9 @@ A `deal` can scale off the caster's state instead of a fixed number. Two forms, 
 | `Deal 3 damage for each unique cloud.`    | `{ verb:'deal', amount:3, scale:{ per:'uniqueClouds' } }` | `3 × unique clouds` |
 | `Deal 1 damage for each minion.`          | `{ verb:'deal', amount:1, scale:{ per:'minions' } }`   | `1 × minions`       |
 | `Deal 1 damage for each card discarded this turn.` | `{ verb:'deal', amount:1, scale:{ per:'cardsDiscardedThisTurn' } }` | `1 × discards this turn` |
+| `Deal 1 damage for each storm cloud.`     | `{ verb:'deal', amount:1, scale:{ per:'stormClouds' } }` | `1 × storm clouds`  |
 
-Metrics (`ScaleMetric` in `shared`): resources `energy`/`poison`/`block`/`shield`/`defense`/`power`/`bravery`, and counts `clouds`/`uniqueClouds`/`minions`/`cardsDiscardedThisTurn`. The last is a per-turn counter on the combatant (`discardedThisTurn`), bumped by real discards only and zeroed by the `ClearTurnCounters` action that the start-of-turn cascade runs beside `ClearBlock` — so a card being *played* into the discard pile never inflates it. `defense` is **block + shield** combined (e.g. Hurl's "Deal damage equal to your defense"). Like Venom/Drink, **scaling resolves in the reducer**: the resolver emits a `DealDamageScaled` action and `metricValue(state, self, per)` computes the amount at apply time (so ordering within a card is respected). Scaling is `deal`-only for now — using it on another verb is a diagnostic, not a silent miss.
+Metrics (`ScaleMetric` in `shared`): resources `energy`/`poison`/`block`/`shield`/`defense`/`power`/`bravery`, and counts `clouds`/`uniqueClouds`/`minions`/`cardsDiscardedThisTurn`, and the per-kind cloud counts `lightningClouds`/`stormClouds`/`snowClouds`/`fogClouds` (naming a type in "for each <type> cloud" narrows the count). The last is a per-turn counter on the combatant (`discardedThisTurn`), bumped by real discards only and zeroed by the `ClearTurnCounters` action that the start-of-turn cascade runs beside `ClearBlock` — so a card being *played* into the discard pile never inflates it. `defense` is **block + shield** combined (e.g. Hurl's "Deal damage equal to your defense"). Like Venom/Drink, **scaling resolves in the reducer**: the resolver emits a `DealDamageScaled` action and `metricValue(state, self, per)` computes the amount at apply time (so ordering within a card is respected). Scaling is `deal`-only for now — using it on another verb is a diagnostic, not a silent miss.
 
 ## Adding a verb / keyword
 

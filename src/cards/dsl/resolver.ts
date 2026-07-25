@@ -70,6 +70,8 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       });
     case 'fill':
       return (ctx) => ({ type: 'FillCloudSlots', target: ctx.self, baseCap: CLOUD_CAP });
+    case 'double':
+      return (ctx) => ({ type: 'SetCloudsPlayTwice', target: ctx.self, value: true });
     case 'remove':
       // "Remove all clouds" (Dissolve) vs a counted "Remove 3 clouds".
       if (effect.noun === 'allClouds') return (ctx) => ({ type: 'RemoveAllClouds', target: ctx.self });

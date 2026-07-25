@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildTestState, playFromHand, endTurn, capClouds, cloudCapFor, CLOUD_CAP, TEST_SELF } from '@cards/index';
-import { OUTBURST, SPATIAL_REASONING, DISSOLVE, RISE_AND_SHINE, LUNAR_WEATHER } from '@cards/definitions/cloud';
+import { buildTestState, playFromHand, endTurn, startTurn, capClouds, cloudCapFor, CLOUD_CAP, TEST_SELF } from '@cards/index';
+import { OUTBURST, SPATIAL_REASONING, DISSOLVE, RISE_AND_SHINE, LUNAR_WEATHER, WHIRLWIND, SOLAR_POWER } from '@cards/definitions/cloud';
 import { WILD_WIND, WINDMILL } from '@cards/definitions/cloud-persistents';
 
 describe('remove all clouds (Dissolve)', () => {
@@ -113,5 +113,49 @@ describe('random cloud generation', () => {
       playFromHand(s, TEST_SELF, 0).state.player.clouds.forEach((c) => kinds.add(c));
     }
     expect(kinds.size).toBeGreaterThan(1);
+  });
+});
+
+describe('Whirlwind — scaling off one cloud type', () => {
+  it('adds 1 damage per storm cloud, ignoring other kinds', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [WHIRLWIND.id], clouds: ['storm', 'fog', 'storm', 'snow'] },
+      target: { hp: 30, maxHp: 30 },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 0);
+    expect(after.enemies[0]!.hp).toBe(24); // 4 base + 1 per storm x2
+  });
+
+  it('is just its base damage with no storms', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [WHIRLWIND.id], clouds: ['fog', 'snow'] },
+      target: { hp: 30, maxHp: 30 },
+    });
+    expect(playFromHand(state, TEST_SELF, 0).state.enemies[0]!.hp).toBe(26);
+  });
+});
+
+describe('Solar Power — clouds play twice next turn', () => {
+  it('arms the flag rather than firing anything now', () => {
+    const state = buildTestState({ player: { energy: 5, hand: [SOLAR_POWER.id], clouds: ['lightning'] } });
+    const { state: after } = playFromHand(state, TEST_SELF, 0);
+    expect(after.player.cloudsPlayTwice).toBe(true);
+    expect(after.player.energy).toBe(4); // spent on the card; no cloud fired yet
+  });
+
+  it('doubles the next turn\'s cloud effects, then spends itself', () => {
+    const armed = buildTestState({ player: { clouds: ['lightning'], cloudsPlayTwice: true } });
+    const next = startTurn(armed, { draw: 0, resetEnergyTo: 0 }).state;
+    expect(next.player.energy).toBe(2); // 1 lightning fired twice
+    expect(next.player.cloudsPlayTwice).toBe(false); // consumed
+
+    // …and the turn after is back to normal.
+    const after = startTurn(next, { draw: 0, resetEnergyTo: 0 }).state;
+    expect(after.player.energy).toBe(1);
+  });
+
+  it('is a no-op when unarmed', () => {
+    const plain = buildTestState({ player: { clouds: ['lightning'] } });
+    expect(startTurn(plain, { draw: 0, resetEnergyTo: 0 }).state.player.energy).toBe(1);
   });
 });

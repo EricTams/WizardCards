@@ -236,6 +236,28 @@ export const LUNAR_WEATHER: CardDef = {
   text: 'Remove 1 cloud. Create 1 random cloud.',
 };
 
+/**
+ * Designed as "deal 4 damage, trigger all Storm Clouds". A Storm Cloud's trigger
+ * is 1 damage, so triggering N of them is N damage — expressed here as a scaled
+ * deal rather than by re-firing the clouds themselves. One nuance: a real Storm
+ * Cloud hits a *random* opponent while this hits your chosen target. Identical
+ * while a battle has a single opponent, which is all the design has today.
+ */
+export const WHIRLWIND: CardDef = {
+  id: cardId('cloud-whirlwind'),
+  name: 'Whirlwind',
+  cost: 1,
+  text: 'Deal 4 damage. Deal 1 damage for each storm cloud.',
+};
+
+/** Designed as "next turn, your clouds play twice" — verb-first so it parses. */
+export const SOLAR_POWER: CardDef = {
+  id: cardId('cloud-solar-power'),
+  name: 'Solar Power',
+  cost: 1,
+  text: 'Double your clouds next turn.',
+};
+
 /** Every Cloud card in this batch, in table order. */
 export const CLOUD_CARDS: readonly CardDef[] = [
   SUN_RAY,
@@ -269,4 +291,6 @@ export const CLOUD_CARDS: readonly CardDef[] = [
   DISSOLVE,
   RISE_AND_SHINE,
   LUNAR_WEATHER,
+  WHIRLWIND,
+  SOLAR_POWER,
 ];

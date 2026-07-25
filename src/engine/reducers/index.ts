@@ -56,6 +56,7 @@ export type GameEvent =
   // `removed` lists the actual cloud types taken away — Static keys off Lightning.
   | { readonly type: 'CloudsRemoved'; readonly target: EntityId; readonly count: number; readonly removed: readonly CloudType[] }
   | { readonly type: 'MaxCloudsIncreased'; readonly target: EntityId; readonly amount: number }
+  | { readonly type: 'CloudsPlayTwiceSet'; readonly target: EntityId; readonly value: boolean }
   | { readonly type: 'MinionSummoned'; readonly owner: EntityId; readonly cardId: CardId }
   | { readonly type: 'MinionDiscarded'; readonly owner: EntityId; readonly count: number }
   | { readonly type: 'PersistentAdded'; readonly target: EntityId; readonly cardId: CardId };
@@ -185,6 +186,12 @@ export function apply(state: GameState, action: Action): ApplyResult {
     case 'RemoveClouds':
       return removeClouds(state, action.target, action.count);
 
+    case 'SetCloudsPlayTwice':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({ ...c, cloudsPlayTwice: action.value })),
+        events: [{ type: 'CloudsPlayTwiceSet', target: action.target, value: action.value }],
+      };
+
     case 'CreateRandomClouds':
       return createRandomClouds(state, action.target, action.count);
 
@@ -285,6 +292,14 @@ export function metricValue(state: GameState, id: EntityId, metric: ScaleMetric)
       return c.clouds.length;
     case 'uniqueClouds':
       return new Set(c.clouds).size;
+    case 'lightningClouds':
+      return c.clouds.filter((x) => x === 'lightning').length;
+    case 'stormClouds':
+      return c.clouds.filter((x) => x === 'storm').length;
+    case 'snowClouds':
+      return c.clouds.filter((x) => x === 'snow').length;
+    case 'fogClouds':
+      return c.clouds.filter((x) => x === 'fog').length;
     case 'cardsDiscardedThisTurn':
       return c.discardedThisTurn;
     case 'minions':

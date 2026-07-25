@@ -47,6 +47,11 @@ export type ScaleMetric =
   | 'bravery'
   | 'clouds'
   | 'uniqueClouds'
+  /** Clouds of one kind — "for each storm cloud" (Whirlwind). */
+  | 'lightningClouds'
+  | 'stormClouds'
+  | 'snowClouds'
+  | 'fogClouds'
   | 'minions'
   /** Cards this combatant has discarded since its turn began (the Crab's payoff). */
   | 'cardsDiscardedThisTurn';

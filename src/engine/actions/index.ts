@@ -215,6 +215,13 @@ export interface FillCloudSlots {
   readonly baseCap: number;
 }
 
+/** Arm (or clear) "your clouds play twice next turn" — Solar Power. */
+export interface SetCloudsPlayTwice {
+  readonly type: 'SetCloudsPlayTwice';
+  readonly target: EntityId;
+  readonly value: boolean;
+}
+
 /** Remove every cloud a combatant holds (Dissolve). */
 export interface RemoveAllClouds {
   readonly type: 'RemoveAllClouds';
@@ -300,6 +307,7 @@ export type Action =
   | IncreaseMaxClouds
   | CreateRandomClouds
   | RemoveRandomClouds
-  | FillCloudSlots;
+  | FillCloudSlots
+  | SetCloudsPlayTwice;
 
 export type ActionType = Action['type'];

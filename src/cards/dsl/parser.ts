@@ -281,6 +281,13 @@ function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode 
   return { kind: 'Effect', verb: 'deal', amount: Number(numberTok.value), noun: 'damage', scale: { per }, ...span };
 }
 
+const TYPED_CLOUD_METRICS: Record<string, ScaleMetric> = {
+  lightning: 'lightningClouds',
+  storm: 'stormClouds',
+  snow: 'snowClouds',
+  fog: 'fogClouds',
+};
+
 function countMetric(words: string[]): ScaleMetric | null {
   if (words.includes('minion') || words.includes('minions')) return 'minions';
   // "for each card discarded this turn" — checked before the bare cloud/minion
@@ -289,7 +296,12 @@ function countMetric(words: string[]): ScaleMetric | null {
     return 'cardsDiscardedThisTurn';
   }
   if (words.includes('cloud') || words.includes('clouds')) {
-    return words.includes('unique') ? 'uniqueClouds' : 'clouds';
+    if (words.includes('unique')) return 'uniqueClouds';
+    // "for each storm cloud" — a named type narrows the count to that kind.
+    for (const [word, metric] of Object.entries(TYPED_CLOUD_METRICS)) {
+      if (words.includes(word)) return metric;
+    }
+    return 'clouds';
   }
   return null;
 }
@@ -385,6 +397,16 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
         return { kind: 'Effect', verb: 'remove', amount: n, noun: 'randomClouds', ...span(head, last) };
       }
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
+    }
+    case 'double': {
+      // Only "double your clouds next turn" (Solar Power) is understood today.
+      const last = group[group.length - 1]!;
+      const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
+      if (!words.includes('cloud') && !words.includes('clouds')) {
+        diagnostics.push(diag('Only "double your clouds next turn" is supported.', head));
+        return null;
+      }
+      return { kind: 'Effect', verb: 'double', noun: 'clouds', ...span(head, last) };
     }
     case 'fill': {
       // Only "fill all empty cloud slots [with random clouds]" is understood.

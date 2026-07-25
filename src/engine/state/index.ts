@@ -64,6 +64,11 @@ export interface Combatant {
    * belonging to the cards layer, which the engine must not know about.
    */
   readonly bonusMaxClouds: number;
+  /**
+   * Set by Solar Power: this combatant's clouds fire twice on their next turn.
+   * Consumed by the start-of-turn cascade after the second firing.
+   */
+  readonly cloudsPlayTwice: boolean;
   /** Minions in play (the Wizard's mechanic). */
   readonly minions: readonly MinionState[];
   /**
@@ -102,6 +107,7 @@ export function makeCombatant(
     discardedThisTurn: 0,
     clouds: [],
     bonusMaxClouds: 0,
+    cloudsPlayTwice: false,
     minions: [],
     persistents: [],
     drawPile: [],
