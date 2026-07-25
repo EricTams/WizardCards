@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   newBattle,
   confirmMulligan,
+  randomMatchup,
   playFromHand,
   endPlayerPhase,
   beginEnemyTurn,
@@ -51,6 +52,13 @@ const FLY_MS = 440;
 const POP_MS = 720;
 
 const delay = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+
+/** The badge on the opponent's face-down hand, by character. */
+const CHARACTER_EMBLEM: Record<string, string> = {
+  cloud: '☁',
+  wizard: '🔮',
+  crab: '🦀',
+};
 
 const THEME_BG: Record<string, string> = {
   field: 'linear-gradient(to bottom, #7fc3ff 0%, #7fc3ff 30%, #5aa84a 30%, #4f9a41 100%)',
@@ -219,11 +227,14 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
       return cur;
     };
 
+    // Each round re-rolls the matchup from that round's seed, so the demo cycles
+    // through pairings instead of replaying one forever. Deriving it from the
+    // seed (rather than Math.random) keeps any given round reproducible.
     const openBattle = (seed: string | number): GameState => {
-      const r = confirmMulligan(newBattle({ ...options, seed }), [0, 1]);
+      const r = confirmMulligan(newBattle({ ...options, seed, ...randomMatchup(seed) }), [0, 1]);
       setLogEntries([]);
       setState(r.state);
-      logTurn(r.state, `— ${r.state.player.name}'s turn —`, r.events, 'player');
+      logTurn(r.state, `— ${r.state.player.name} vs ${r.state.enemies[0]?.name ?? 'Enemy'} —`, r.events, 'player');
       return r.state;
     };
 
@@ -288,7 +299,10 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     setLog(r.state.player.clouds.length > CLOUD_CAP ? 'Replace another cloud…' : 'Clouds set.');
   }
 
-  const bg = THEME_BG[character.theme] ?? THEME_BG.field;
+  // Follow whoever is actually in the battle, not the character in `options` —
+  // Attract Mode re-rolls the matchup each round, so the two can differ.
+  const sceneChar = (state.player.character && CHARACTERS[state.player.character as keyof typeof CHARACTERS]) || character;
+  const bg = THEME_BG[sceneChar.theme] ?? THEME_BG.field;
 
   function toggleMull(i: number) {
     setMullPicks((p) => (p.includes(i) ? p.filter((x) => x !== i) : p.length < OPENING_DISCARD ? [...p, i] : p));
@@ -411,7 +425,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
       <CombatLog entries={logEntries} />
 
       {/* Opponent's hidden hand — a fan of card backs, top-center (mirrors yours) */}
-      {enemy && <OpponentHand count={enemy.hand.length} emblem={enemy.character === 'wizard' ? '🔮' : '☁'} />}
+      {enemy && <OpponentHand count={enemy.hand.length} emblem={CHARACTER_EMBLEM[enemy.character ?? ''] ?? '☁'} />}
 
       {/* Enemy — top right */}
       {enemy && (

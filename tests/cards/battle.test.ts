@@ -13,6 +13,8 @@ import {
   ENEMY_ID,
   OPENING_HAND,
   OPENING_DISCARD,
+  randomMatchup,
+  CHARACTERS,
   DECK_SIZE,
   CLOUD_CAP,
   type BattleOptions,
@@ -48,6 +50,29 @@ describe('battle setup', () => {
     // Still discards the usual 2 — the relic's value is the extra card kept.
     const { state } = confirmMulligan(s, [0, 1]);
     expect(state.player.hand).toHaveLength(OPENING_HAND + 1 - OPENING_DISCARD);
+  });
+
+  it('randomMatchup always pairs two different characters, and is seed-stable', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const m = randomMatchup(`seed-${i}`);
+      expect(m.character).not.toBe(m.enemyCharacter);
+      expect(CHARACTERS[m.character]).toBeDefined();
+      expect(CHARACTERS[m.enemyCharacter]).toBeDefined();
+      seen.add(m.character);
+      seen.add(m.enemyCharacter);
+    }
+    // Every playable character turns up across a decent sample.
+    expect(seen.size).toBe(Object.keys(CHARACTERS).length);
+    // Same seed, same matchup — an odd demo round can be reproduced.
+    expect(randomMatchup('repeat')).toEqual(randomMatchup('repeat'));
+  });
+
+  it('builds a real battle from a random matchup', () => {
+    const m = randomMatchup('attract-1');
+    const s = newBattle({ ...m, relicId: '', seed: 'attract-1' });
+    expect(s.player.character).toBe(m.character);
+    expect(s.enemies[0]!.character).toBe(m.enemyCharacter);
   });
 
   it('mulligan discards the chosen cards and begins turn 1', () => {

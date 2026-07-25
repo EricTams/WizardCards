@@ -63,6 +63,7 @@ export {
   OPENING_DISCARD,
   PLAYER_ID,
   ENEMY_ID,
+  randomMatchup,
 } from '@cards/match/battle';
 export type { CharacterDef, RelicDef } from '@cards/match/content';
 export { CHARACTERS, RELICS, getRelic, BASE_MAX_HP, BASE_ENERGY, DECK_SIZE, CLOUD_CAP } from '@cards/match/content';

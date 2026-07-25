@@ -15,6 +15,7 @@ import {
   makeCombatant,
   nextInt,
   opponentsOf,
+  seedRng,
   shuffle,
   type Action,
   type Combatant,
@@ -46,10 +47,30 @@ export interface BattleOptions {
   readonly seed: string | number;
   /**
    * The opponent's character. Omit for the default curated "Rival Cloud". When
-   * set (e.g. Attract Mode's Wizard vs Cloud), the enemy is built from that
+   * set (as Attract Mode does for both sides), the enemy is built from that
    * character's real pool and plays it through the same AI.
    */
   readonly enemyCharacter?: PlayableCharacter;
+}
+
+/**
+ * Pick two *different* playable characters to face each other — what Attract
+ * Mode shows off.
+ *
+ * Derived from the seed rather than `Math.random`, so a given seed always yields
+ * the same matchup: an odd-looking demo match can be reproduced from its seed
+ * alone. The seed is namespaced so this draw doesn't correlate with the deck
+ * shuffles the battle makes from the same seed.
+ */
+export function randomMatchup(seed: string | number): {
+  character: PlayableCharacter;
+  enemyCharacter: PlayableCharacter;
+} {
+  const ids = (Object.keys(CHARACTERS) as PlayableCharacter[]).filter((id) => CHARACTERS[id].playable);
+  const first = nextInt(seedRng(`matchup-${seed}`), 0, ids.length - 1);
+  const others = ids.filter((_, i) => i !== first.value);
+  const second = nextInt(first.state, 0, others.length - 1);
+  return { character: ids[first.value]!, enemyCharacter: others[second.value]! };
 }
 
 /** Deterministically build a `size`-card deck from a character's pool. */
