@@ -47,7 +47,9 @@ export type ScaleMetric =
   | 'bravery'
   | 'clouds'
   | 'uniqueClouds'
-  | 'minions';
+  | 'minions'
+  /** Cards this combatant has discarded since its turn began (the Crab's payoff). */
+  | 'cardsDiscardedThisTurn';
 
 /**
  * Result — the return type of every fallible pure stage (parser stages, move

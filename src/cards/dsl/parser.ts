@@ -65,6 +65,8 @@ export function parse(source: string): Result<CardScript, Diagnostic[]> {
     if (TRIGGER_LEADS.has(lead)) {
       const trigger = parseTrigger(sentence, diagnostics);
       if (trigger) triggers.push(trigger);
+    } else if (isClawSentence(sentence)) {
+      modifiers.push({ kind: 'Modifier', modifier: 'claw', start: head.start, end: sentence[sentence.length - 1]!.end });
     } else if (isModifierSentence(sentence)) {
       const modifier = parseModifier(sentence, diagnostics);
       if (modifier) modifiers.push(modifier);
@@ -183,6 +185,14 @@ function normalizeResource(word: string): string {
 
 // --- modifiers ---------------------------------------------------------------
 
+/**
+ * `Claw.` on its own — the Crab's keyword, marking the card as one that plays
+ * for free when discarded. A whole sentence so it can't be confused with a verb.
+ */
+function isClawSentence(sentence: Token[]): boolean {
+  return sentence.length === 1 && sentence[0]!.type === 'word' && sentence[0]!.value.toLowerCase() === 'claw';
+}
+
 function isModifierSentence(sentence: Token[]): boolean {
   const first = sentence[0]?.value.toLowerCase();
   const second = sentence[1]?.value.toLowerCase();
@@ -260,7 +270,7 @@ function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode 
   }
   const per = countMetric(words);
   if (!per) {
-    diagnostics.push(diag('"for each …" needs cloud, unique cloud, or minion.', head));
+    diagnostics.push(diag('"for each …" needs cloud, unique cloud, minion, or card discarded this turn.', head));
     return null;
   }
   return { kind: 'Effect', verb: 'deal', amount: Number(numberTok.value), noun: 'damage', scale: { per }, ...span };
@@ -268,6 +278,11 @@ function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode 
 
 function countMetric(words: string[]): ScaleMetric | null {
   if (words.includes('minion') || words.includes('minions')) return 'minions';
+  // "for each card discarded this turn" — checked before the bare cloud/minion
+  // counts because it is the only one qualified by a verb.
+  if (words.includes('discarded') && (words.includes('card') || words.includes('cards'))) {
+    return 'cardsDiscardedThisTurn';
+  }
   if (words.includes('cloud') || words.includes('clouds')) {
     return words.includes('unique') ? 'uniqueClouds' : 'clouds';
   }
@@ -350,7 +365,9 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
     case 'remove':
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
     case 'discard':
-      return needAmountNoun(group, 'discard', ['minion'], diagnostics);
+      // "Discard 1 card" (the Crab) and "Discard 1 minion" (the Wizard) share a
+      // verb; the resolver picks the action from the noun.
+      return needAmountNoun(group, 'discard', ['minion', 'card'], diagnostics);
     default:
       diagnostics.push(diag(`Unknown verb "${head.value}".`, head));
       return null;

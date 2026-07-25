@@ -88,10 +88,14 @@ export interface TriggerNode {
   readonly end: number;
 }
 
-/** Static rule changes that aren't trigger→effect (Winter, Fall). */
+/**
+ * Static rule changes that aren't trigger→effect (Winter, Fall), plus `claw` —
+ * a property of the card itself rather than of the board: a card with Claw plays
+ * for free when it is discarded (resolved in `src/cards/match`).
+ */
 export interface ModifierNode {
   readonly kind: 'Modifier';
-  readonly modifier: 'snowHealBonus' | 'suppressFogDiscard';
+  readonly modifier: 'snowHealBonus' | 'suppressFogDiscard' | 'claw';
   readonly amount?: number;
   readonly start: number;
   readonly end: number;

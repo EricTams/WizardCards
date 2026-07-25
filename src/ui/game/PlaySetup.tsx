@@ -1,15 +1,22 @@
 import { useMemo, useState } from 'react';
-import { CHARACTERS, RELICS, getRelic, type BattleOptions } from '@cards/index';
+import { CHARACTERS, RELICS, getRelic, type BattleOptions, type PlayableCharacter } from '@cards/index';
 import { Sprite } from '@ui/game/Sprite';
 import { heroSprite, SPRITE_CSS } from '@ui/game/art';
 import { BattleScreen } from '@ui/game/BattleScreen';
 
 /**
  * PlaySetup — the light pre-battle flow: pick a character, keep 1 of 3 relics,
- * then drop into the battle. (Only Cloud & Wizard have authored cards today; other
- * characters come later.)
+ * then drop into the battle. (Cloud, Wizard and Crab have authored cards today;
+ * the Old Lady and the Writer come later.)
  */
-type PlayChar = 'cloud' | 'wizard';
+type PlayChar = PlayableCharacter;
+
+/** The character-specific relic each pick offers alongside two general ones. */
+const SIGNATURE_RELIC: Partial<Record<PlayChar, string>> = {
+  cloud: 'lightning-rod',
+  wizard: 'vial',
+  crab: 'seashell',
+};
 
 export function PlaySetup({ onExit }: { onExit: () => void }) {
   const [character, setCharacter] = useState<PlayChar | null>(null);
@@ -21,7 +28,7 @@ export function PlaySetup({ onExit }: { onExit: () => void }) {
     return (
       <SetupShell title="Choose your wanderer" onBack={onExit}>
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
-          {(['cloud', 'wizard'] as PlayChar[]).map((id) => (
+          {(['cloud', 'wizard', 'crab'] as PlayChar[]).map((id) => (
             <CharacterCard key={id} id={id} onPick={() => setCharacter(id)} />
           ))}
         </div>
@@ -70,10 +77,10 @@ function RelicSelect({
   onExit: () => void;
   onChoose: (relicId: string) => void;
 }) {
-  // Offer three: two general relics plus the character's signature relic.
+  // Offer three: the character's signature relic plus general ones to fill out.
   const offered = useMemo(() => {
-    const signature = character === 'cloud' ? 'lightning-rod' : 'vial';
-    const ids = ['old-shield', 'sword', signature];
+    const signature = SIGNATURE_RELIC[character];
+    const ids = ['old-shield', 'sword', ...(signature ? [signature] : ['calculator'])];
     return ids.map((i) => getRelic(i)).filter((r): r is NonNullable<typeof r> => !!r);
   }, [character]);
 

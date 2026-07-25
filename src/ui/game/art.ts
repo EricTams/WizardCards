@@ -89,11 +89,22 @@ export function cloudSprite(type: CloudType): Sprite {
  */
 export const CARD_POINTER = sheet('art/other/Card Pointer-Hand.png', 32, 48, 1, 0);
 
+/**
+ * Card-art folders keyed by the character prefix every card id carries
+ * (`crab-pinch` → `art/card/crab/Crab Cards-Pinch.png`). Unprefixed ids fall
+ * back to the Cloud, which is where the first cards lived.
+ */
+const CARD_ART_FOLDERS: Record<string, { folder: string; prefix: string }> = {
+  cloud: { folder: 'cloud', prefix: 'Cloud Cards' },
+  wizard: { folder: 'wizard', prefix: 'Wizard Cards' },
+  crab: { folder: 'crab', prefix: 'Crab Cards' },
+  writer: { folder: 'writer', prefix: 'Writer Cards' },
+};
+
 /** The card-face art for a card, chosen by its character-prefixed id. */
 export function cardArtUrl(card: { readonly id: string; readonly name: string }): string {
-  const isWizard = card.id.startsWith('wizard');
-  const folder = isWizard ? 'wizard' : 'cloud';
-  const prefix = isWizard ? 'Wizard Cards' : 'Cloud Cards';
+  const key = card.id.split('-')[0] ?? '';
+  const { folder, prefix } = CARD_ART_FOLDERS[key] ?? CARD_ART_FOLDERS.cloud!;
   return artUrl(`art/card/${folder}/${prefix}-${card.name}.png`);
 }
 

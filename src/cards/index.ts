@@ -48,7 +48,7 @@ export type { PersistentBehavior } from '@cards/match/compile-persistent';
 export { compilePersistent } from '@cards/match/compile-persistent';
 export { activePersistents, persistentBehavior } from '@cards/match/persistents';
 
-export type { BattleOptions, EnemyPlay } from '@cards/match/battle';
+export type { BattleOptions, EnemyPlay, PlayableCharacter } from '@cards/match/battle';
 export {
   newBattle,
   confirmMulligan,

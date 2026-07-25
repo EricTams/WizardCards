@@ -17,12 +17,28 @@ import type { Combatant, GameState, MinionState, Phase } from '@engine/state/ind
 import type { Action } from '@engine/actions/index';
 import { nextInt, shuffle } from '@engine/rng/index';
 
+/** Why cards left a hand — see the `CardsDiscarded` event below. */
+export type DiscardReason = 'discard' | 'play' | 'setup';
+
 export type GameEvent =
   | { readonly type: 'TurnStarted'; readonly turn: number }
   | { readonly type: 'TurnEnded'; readonly turn: number }
   | { readonly type: 'PhaseChanged'; readonly phase: Phase }
   | { readonly type: 'CardsDrawn'; readonly owner: EntityId; readonly cards: readonly CardId[] }
-  | { readonly type: 'CardsDiscarded'; readonly owner: EntityId; readonly cards: readonly CardId[] }
+  /**
+   * Cards left a hand for the discard pile. Only `'discard'` is a discard in the
+   * game's sense — the Fog penalty, "discard 2 cards" — and only it may set off
+   * discard triggers like the Crab's Claw. `'play'` is a card moving to the pile
+   * as it is played (firing on that would play every Claw card twice), and
+   * `'setup'` is the opening mulligan, which happens before the battle begins.
+   */
+  | {
+      readonly type: 'CardsDiscarded';
+      readonly owner: EntityId;
+      readonly cards: readonly CardId[];
+      readonly reason: DiscardReason;
+    }
+  | { readonly type: 'TurnCountersCleared'; readonly target: EntityId }
   | { readonly type: 'DeckReshuffled'; readonly owner: EntityId }
   | { readonly type: 'EnergySet'; readonly target: EntityId; readonly amount: number }
   // `unblocked` is the portion that got past block+shield — what triggers like
@@ -71,11 +87,17 @@ export function apply(state: GameState, action: Action): ApplyResult {
         events: [{ type: 'BlockCleared', target: action.target }],
       };
 
+    case 'ClearTurnCounters':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({ ...c, discardedThisTurn: 0 })),
+        events: [{ type: 'TurnCountersCleared', target: action.target }],
+      };
+
     case 'DiscardCards':
       return discardCards(state, action.owner ?? state.player.id, action.count);
 
     case 'MoveHandCardToDiscard':
-      return moveHandCardToDiscard(state, action.owner ?? state.player.id, action.index);
+      return moveHandCardToDiscard(state, action.owner ?? state.player.id, action.index, action.reason ?? 'play');
 
     case 'DealDamageToRandomEnemy':
       return dealDamageToRandomEnemy(state, action.self ?? state.player.id, action.amount);
@@ -231,6 +253,8 @@ export function metricValue(state: GameState, id: EntityId, metric: ScaleMetric)
       return c.clouds.length;
     case 'uniqueClouds':
       return new Set(c.clouds).size;
+    case 'cardsDiscardedThisTurn':
+      return c.discardedThisTurn;
     case 'minions':
       return c.minions.length;
   }
@@ -317,24 +341,30 @@ function dealDamageToRandomEnemy(state: GameState, self: EntityId, amount: numbe
 
 function discardCards(state: GameState, owner: EntityId, count: number): ApplyResult {
   const c = findCombatant(state, owner);
-  if (!c) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [] }] };
+  if (!c) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], reason: 'discard' }] };
   const n = Math.min(Math.max(0, count), c.hand.length);
-  if (n === 0) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [] }] };
+  if (n === 0) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], reason: 'discard' }] };
   const discarded = c.hand.slice(c.hand.length - n);
   return {
     state: mapCombatant(state, owner, (cc) => ({
       ...cc,
       hand: cc.hand.slice(0, cc.hand.length - n),
       discardPile: [...cc.discardPile, ...discarded],
+      discardedThisTurn: cc.discardedThisTurn + n,
     })),
-    events: [{ type: 'CardsDiscarded', owner, cards: discarded }],
+    events: [{ type: 'CardsDiscarded', owner, cards: discarded, reason: 'discard' }],
   };
 }
 
-function moveHandCardToDiscard(state: GameState, owner: EntityId, index: number): ApplyResult {
+function moveHandCardToDiscard(
+  state: GameState,
+  owner: EntityId,
+  index: number,
+  reason: 'play' | 'setup',
+): ApplyResult {
   const c = findCombatant(state, owner);
   if (!c || index < 0 || index >= c.hand.length) {
-    return { state, events: [{ type: 'CardsDiscarded', owner, cards: [] }] };
+    return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], reason }] };
   }
   const card = c.hand[index]!;
   return {
@@ -342,8 +372,11 @@ function moveHandCardToDiscard(state: GameState, owner: EntityId, index: number)
       ...cc,
       hand: cc.hand.filter((_, i) => i !== index),
       discardPile: [...cc.discardPile, card],
+      // Deliberately not counted in `discardedThisTurn`: a card being played or
+      // mulliganed is not discarded. Counting the play would also let "for each
+      // card discarded this turn" read the very card that is asking.
     })),
-    events: [{ type: 'CardsDiscarded', owner, cards: [card] }],
+    events: [{ type: 'CardsDiscarded', owner, cards: [card], reason }],
   };
 }
 

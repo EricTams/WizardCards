@@ -39,7 +39,8 @@ The one-battle loop the design describes (`reference/design.md` → "Game Setup 
 - ✅ **Energy economy & turn structure:** base 1 energy/turn (`SetEnergy` reset) + Lightning clouds; draw 1 per turn; reshuffle on deckout.
 - ✅ **Block** (temporary) vs. **Shield** (persistent) — already two distinct resources on `Combatant`.
 - ✅ **Game view** (`src/ui/game/BattleScreen.tsx`): the full battle screen from the mockups, using the hand-drawn art for cards/heroes/clouds and HTML for every numeric value; character/relic select (`PlaySetup.tsx`) at `#/play`.
-- ⏳ Still open: full ~40-card pools + Persistent cards in decks, a richer/varied enemy model (enemy persistents & clouds), multi-target/AoE selection, the other three characters, and formal move-intent validation. The **game log** (below) is also still to come in the game view.
+- ✅ **The Crab** (`src/cards/definitions/crab.ts`): 20 cards + Crab Trap, playable from character select on the `beach` theme, with the **Claw** keyword (`src/cards/match/claw.ts`), `discard N cards`, scaling off `cardsDiscardedThisTurn`, and the Seashell relic (opening hand of 6 instead of 5).
+- ⏳ Still open: full ~40-card pools + Persistent cards in decks, a richer/varied enemy model (enemy persistents & clouds), multi-target/AoE selection, the Old Lady and the Writer, and formal move-intent validation. The **game log** (below) is also still to come in the game view.
 
 Several design ambiguities that gated this phase are now decided (energy economy, enemy model = same card system, no turn limit) — see `vision.md`.
 

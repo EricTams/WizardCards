@@ -11,6 +11,7 @@ import type { CardId, CharacterId, EntityId } from '@shared/index';
 import type { CardDef } from '@cards/registry';
 import { CLOUD_CARDS, CLOUD_ZAP, SUN_RAY, CRISSCROSS, SHINE, RAIN, HAZE, CLEANSE } from '@cards/definitions/cloud';
 import { WIZARD_CARDS } from '@cards/definitions/wizard';
+import { CRAB_CARDS } from '@cards/definitions/crab';
 
 /** Base energy every combatant starts each turn with (design: "start with 1"). */
 export const BASE_ENERGY = 1;
@@ -33,8 +34,8 @@ export interface CharacterDef {
   readonly playable: boolean;
 }
 
-/** The two characters with authored cards. Others are placeholders for later. */
-export const CHARACTERS: Record<'cloud' | 'wizard', CharacterDef> = {
+/** The characters with authored cards. Others are placeholders for later. */
+export const CHARACTERS: Record<'cloud' | 'wizard' | 'crab', CharacterDef> = {
   cloud: {
     id: 'cloud',
     name: 'The Cloud',
@@ -51,6 +52,14 @@ export const CHARACTERS: Record<'cloud' | 'wizard', CharacterDef> = {
     theme: 'chamber',
     playable: true,
   },
+  crab: {
+    id: 'crab',
+    name: 'The Crab',
+    blurb: 'Churns its hand — cards with Claw play for free when discarded.',
+    pool: CRAB_CARDS,
+    theme: 'beach',
+    playable: true,
+  },
 };
 
 export interface RelicDef {
@@ -61,6 +70,12 @@ export interface RelicDef {
   readonly bonusMaxHp?: number;
   /** Atomic actions applied to the owner once, at the start of combat. */
   readonly onCombatStart?: (ownerId: EntityId) => Action[];
+  /**
+   * Replaces how many cards the opening hand draws (Seashell: 6 instead of 5).
+   * A *replacement*, not a bonus draw — the mulligan still discards the usual
+   * number, so the relic's effect is the net card it leaves you holding.
+   */
+  readonly openingHand?: number;
 }
 
 /**
@@ -98,6 +113,12 @@ export const RELICS: readonly RelicDef[] = [
     name: 'Vial',
     text: 'Start combat with 3 Poison.',
     onCombatStart: (o) => [{ type: 'GainPoison', target: o, amount: 3 }],
+  },
+  {
+    id: 'seashell',
+    name: 'Seashell',
+    text: 'Draw 6 cards for your opening hand instead of 5 (still discard 2).',
+    openingHand: 6,
   },
 ];
 

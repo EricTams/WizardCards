@@ -34,6 +34,15 @@ export interface ClearBlock {
   readonly target: EntityId;
 }
 
+/**
+ * Zero the per-turn counters a combatant accumulates (today just the discard
+ * count the Crab scales off). Run alongside ClearBlock at the start of a turn.
+ */
+export interface ClearTurnCounters {
+  readonly type: 'ClearTurnCounters';
+  readonly target: EntityId;
+}
+
 /** Move `count` cards from the end of `owner`'s hand to their discard pile. */
 export interface DiscardCards {
   readonly type: 'DiscardCards';
@@ -48,6 +57,13 @@ export interface MoveHandCardToDiscard {
   /** Whose hand. Defaults to the player when omitted. */
   readonly owner?: EntityId;
   readonly index: number;
+  /**
+   * Why the card is leaving hand — it rides along on the `CardsDiscarded` event
+   * so discard triggers can tell these apart. `'play'` (the default) is a card
+   * being played; `'setup'` is the opening mulligan, which happens before the
+   * battle and so must not set off Claw.
+   */
+  readonly reason?: 'play' | 'setup';
 }
 
 /**
@@ -224,6 +240,7 @@ export type Action =
   | Venom
   | Drink
   | SummonMinion
-  | DiscardMinion;
+  | DiscardMinion
+  | ClearTurnCounters;
 
 export type ActionType = Action['type'];

@@ -37,8 +37,11 @@ const ENEMY_PLAY_CAP = 40;
 export const PLAYER_ID = entityId('player');
 export const ENEMY_ID = entityId('enemy');
 
+/** The characters with an authored pool — the keys of CHARACTERS. */
+export type PlayableCharacter = keyof typeof CHARACTERS;
+
 export interface BattleOptions {
-  readonly character: 'cloud' | 'wizard';
+  readonly character: PlayableCharacter;
   readonly relicId: string;
   readonly seed: string | number;
   /**
@@ -46,7 +49,7 @@ export interface BattleOptions {
    * set (e.g. Attract Mode's Wizard vs Cloud), the enemy is built from that
    * character's real pool and plays it through the same AI.
    */
-  readonly enemyCharacter?: 'cloud' | 'wizard';
+  readonly enemyCharacter?: PlayableCharacter;
 }
 
 /** Deterministically build a `size`-card deck from a character's pool. */
@@ -77,7 +80,9 @@ function discardRandom(state: GameState, owner: EntityId, count: number): GameSt
     const c = combatantOf(s, owner);
     if (!c || c.hand.length === 0) break;
     const draw = nextInt(s.rng, 0, c.hand.length - 1);
-    s = runWithTriggers({ ...s, rng: draw.state }, [{ type: 'MoveHandCardToDiscard', owner, index: draw.value }]).state;
+    s = runWithTriggers({ ...s, rng: draw.state }, [
+      { type: 'MoveHandCardToDiscard', owner, index: draw.value, reason: 'setup' },
+    ]).state;
   }
   return s;
 }
@@ -129,7 +134,10 @@ export function newBattle(opts: BattleOptions): GameState {
 
   if (relic?.onCombatStart) state = runWithTriggers(state, relic.onCombatStart(player.id)).state;
 
-  state = runWithTriggers(state, [{ type: 'DrawCards', owner: player.id, count: OPENING_HAND }]).state;
+  // A relic may replace the opening draw (Seashell: 6 instead of 5). The mulligan
+  // still discards OPENING_DISCARD, so the relic's value is the extra card kept.
+  const playerOpening = relic?.openingHand ?? OPENING_HAND;
+  state = runWithTriggers(state, [{ type: 'DrawCards', owner: player.id, count: playerOpening }]).state;
   state = runWithTriggers(state, [{ type: 'DrawCards', owner: enemy.id, count: OPENING_HAND }]).state;
   state = discardRandom(state, enemy.id, OPENING_DISCARD); // the enemy's mulligan
   return { ...state, phase: 'mulligan' };
@@ -145,7 +153,9 @@ export function confirmMulligan(state: GameState, discardIndices: readonly numbe
   const events: GameEvent[] = [];
   // Remove highest indices first so earlier removals don't shift later ones.
   for (const idx of [...discardIndices].sort((a, b) => b - a)) {
-    const r = runWithTriggers(cur, [{ type: 'MoveHandCardToDiscard', owner: cur.player.id, index: idx }]);
+    const r = runWithTriggers(cur, [
+      { type: 'MoveHandCardToDiscard', owner: cur.player.id, index: idx, reason: 'setup' },
+    ]);
     cur = r.state;
     events.push(...r.events);
   }

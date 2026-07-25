@@ -451,7 +451,7 @@ Works with Unplayable cards, "burning" them for effects, and building Bravery to
 |2|**Toy Boat**|Attacks with Claw deal 1 Additional damage|
 |3|**Fish Food**|Whenever you play a card with discard, Gain 1 Shield|
 |4|**Whale**|When you shuffle, Draw 2 Cards|
-|5|**Seashell**|At the start of combat, Draw 6 Cards and discard 2|
+|5|**Seashell**|Your opening hand draws 6 Cards instead of 5 — you still discard 2, so you keep one extra|
 
 ## Cloud Relics
 

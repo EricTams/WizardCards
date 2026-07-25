@@ -51,6 +51,11 @@ export interface Combatant {
   readonly power: number;
   /** The Writer's block/damage burst charge. */
   readonly bravery: number;
+  /**
+   * Cards discarded since this combatant's turn began — the Crab scales off it
+   * ("deal 1 damage for each card discarded this turn"). Reset by `StartTurn`.
+   */
+  readonly discardedThisTurn: number;
   /** Cloud tokens in play (the Cloud's mechanic). */
   readonly clouds: readonly CloudType[];
   /** Minions in play (the Wizard's mechanic). */
@@ -88,6 +93,7 @@ export function makeCombatant(
     poison: 0,
     power: 0,
     bravery: 0,
+    discardedThisTurn: 0,
     clouds: [],
     minions: [],
     persistents: [],

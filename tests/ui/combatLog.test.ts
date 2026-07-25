@@ -33,7 +33,7 @@ describe('combat log formatting', () => {
   it("drops the played card's own discard so a play reads as just its effects", () => {
     const zap = cardId('cloud-zap');
     const events: GameEvent[] = [
-      { type: 'CardsDiscarded', owner: P, cards: [zap] }, // the card leaving hand
+      { type: 'CardsDiscarded', owner: P, cards: [zap], reason: 'play' }, // the card leaving hand
       { type: 'DamageDealt', target: E, amount: 2, unblocked: 2 },
       { type: 'EnergyGained', target: P, amount: 1 },
     ];

@@ -27,6 +27,7 @@ import type { PlayContext } from '@cards/dsl/resolver';
 import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
 import { activePersistents } from '@cards/match/persistents';
+import { clawTriggers } from '@cards/match/claw';
 
 export interface RunResult {
   readonly state: GameState;
@@ -36,9 +37,17 @@ export interface RunResult {
 /** Safety net against a pathological trigger loop; real cascades are tiny. */
 const TRIGGER_CAP = 1000;
 
-/** Follow-up actions the active persistents want in response to one event. */
+/**
+ * Follow-up actions one event owes: what the active persistents want, plus the
+ * free plays from any discarded Claw cards. Two sources because they live in
+ * different places — persistents react from the play area, a Claw card reacts as
+ * it leaves the hand (see `claw.ts`).
+ */
 export function reactiveTriggers(state: GameState, event: GameEvent): Action[] {
-  return activePersistents(state).flatMap((p) => (p.onEvent ? p.onEvent(state, event) : []));
+  return [
+    ...activePersistents(state).flatMap((p) => (p.onEvent ? p.onEvent(state, event) : [])),
+    ...clawTriggers(state, event),
+  ];
 }
 
 /** Apply one action, then resolve the reactive-trigger cascade it sets off. */
@@ -150,7 +159,7 @@ export function runTurnCascade(
     events.push(...result.events);
   };
 
-  run([{ type: 'ClearBlock', target: actorId }]);
+  run([{ type: 'ClearBlock', target: actorId }, { type: 'ClearTurnCounters', target: actorId }]);
   // Design: you start each turn with a base energy (usually 1); Lightning clouds
   // then add on top. Reset happens before clouds so "start with >3 energy" checks
   // (Summer) see the post-Lightning total.

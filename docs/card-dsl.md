@@ -30,7 +30,7 @@ poison  <number>
 draw    <number> ["card"]
 create  <number> CLOUD "cloud"     CLOUD ∈ lightning | storm | snow | fog
 remove  <number> "cloud"
-discard <number> "minion"
+discard <number> ("minion" | "card")
 "venom" | "drink" | "minion"       bare keyword effects (no number/noun)
 ```
 
@@ -46,6 +46,7 @@ discard <number> "minion"
 | `Create 2 storm clouds.`   | `{ verb:'create', amount:2, cloudType:'storm' }`    | `CreateClouds(self, 'storm', 2)`           |
 | `Remove 1 cloud.`          | `{ verb:'remove', amount:1, noun:'cloud' }`         | `RemoveClouds(self, 1)`                    |
 | `Discard 1 minion.`        | `{ verb:'discard', amount:1, noun:'minion' }`       | `DiscardMinion(self, 1)`                   |
+| `Discard 2 cards.`         | `{ verb:'discard', amount:2, noun:'card' }`         | `DiscardCards(self, 2)`                    |
 | `Venom.`                   | `{ verb:'venom' }`                                  | `Venom(self, target)`                      |
 | `Drink.`                   | `{ verb:'drink' }`                                  | `Drink(self)`                              |
 | `Minion.`                  | `{ verb:'minion' }`                                 | `SummonMinion(self, sourceCard)`           |
@@ -81,6 +82,8 @@ The when-phrase is matched by keywords, so wording is forgiving. A reactive trig
 
 **Modifiers** — the two stat-changing persistents: `Snow clouds heal 2 instead of 1.` → `{ modifier: 'snowHealBonus', amount: 1 }`, and `Fog clouds no longer force a discard.` → `{ modifier: 'suppressFogDiscard' }`.
 
+**`Claw.`** — the Crab's keyword, written as a sentence of its own (`Claw. Deal 4 damage.`) so it can't be mistaken for a verb. It parses to `{ modifier: 'claw' }` and yields **no on-play action**: it marks the card as one that plays for free when *discarded*. The card's other statements are its effects as normal, whether played from hand or fired by Claw. Resolution lives in `src/cards/match/claw.ts` — see `docs/triggers.md`.
+
 ## Scaling (`deal` amounts that read state)
 
 A `deal` can scale off the caster's state instead of a fixed number. Two forms, both set `effect.scale = { per: <metric> }` where the effective amount is `(amount ?? 1) × metric`:
@@ -90,8 +93,9 @@ A `deal` can scale off the caster's state instead of a fixed number. Two forms, 
 | `Deal damage equal to your energy.`       | `{ verb:'deal', scale:{ per:'energy' } }`              | `1 × energy`        |
 | `Deal 3 damage for each unique cloud.`    | `{ verb:'deal', amount:3, scale:{ per:'uniqueClouds' } }` | `3 × unique clouds` |
 | `Deal 1 damage for each minion.`          | `{ verb:'deal', amount:1, scale:{ per:'minions' } }`   | `1 × minions`       |
+| `Deal 1 damage for each card discarded this turn.` | `{ verb:'deal', amount:1, scale:{ per:'cardsDiscardedThisTurn' } }` | `1 × discards this turn` |
 
-Metrics (`ScaleMetric` in `shared`): resources `energy`/`poison`/`block`/`shield`/`defense`/`power`/`bravery`, and counts `clouds`/`uniqueClouds`/`minions`. `defense` is **block + shield** combined (e.g. Hurl's "Deal damage equal to your defense"). Like Venom/Drink, **scaling resolves in the reducer**: the resolver emits a `DealDamageScaled` action and `metricValue(state, self, per)` computes the amount at apply time (so ordering within a card is respected). Scaling is `deal`-only for now — using it on another verb is a diagnostic, not a silent miss.
+Metrics (`ScaleMetric` in `shared`): resources `energy`/`poison`/`block`/`shield`/`defense`/`power`/`bravery`, and counts `clouds`/`uniqueClouds`/`minions`/`cardsDiscardedThisTurn`. The last is a per-turn counter on the combatant (`discardedThisTurn`), bumped by real discards only and zeroed by the `ClearTurnCounters` action that the start-of-turn cascade runs beside `ClearBlock` — so a card being *played* into the discard pile never inflates it. `defense` is **block + shield** combined (e.g. Hurl's "Deal damage equal to your defense"). Like Venom/Drink, **scaling resolves in the reducer**: the resolver emits a `DealDamageScaled` action and `metricValue(state, self, per)` computes the amount at apply time (so ordering within a card is respected). Scaling is `deal`-only for now — using it on another verb is a diagnostic, not a silent miss.
 
 ## Adding a verb / keyword
 

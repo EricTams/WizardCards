@@ -65,7 +65,11 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
     case 'remove':
       return (ctx) => ({ type: 'RemoveClouds', target: ctx.self, count: amount });
     case 'discard':
-      return (ctx) => ({ type: 'DiscardMinion', owner: ctx.self, count: amount });
+      // The noun picks the pile: "discard 1 minion" (Wizard) vs "discard 1 card"
+      // (Crab). The parser only admits these two nouns.
+      return effect.noun === 'minion'
+        ? (ctx) => ({ type: 'DiscardMinion', owner: ctx.self, count: amount })
+        : (ctx) => ({ type: 'DiscardCards', owner: ctx.self, count: amount });
     case 'venom':
       return (ctx) => ({ type: 'Venom', self: ctx.self, target: ctx.target });
     case 'drink':

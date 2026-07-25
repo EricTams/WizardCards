@@ -33,6 +33,22 @@ applyWithTriggers(state, action):
 
 Some events carry extra data precisely so triggers can key off them: `DamageDealt.unblocked` (Rot Away — "unblocked damage") and `CloudsRemoved.removed` (Static — "a Lightning cloud is removed").
 
+### Claw — the card itself is the trigger
+
+Persistents react from the play area and minions replay from the board, but the Crab's **Claw** reacts *as the card leaves the hand*: "whenever this card is discarded, it plays for free". So it can't be a persistent — the card isn't in play — and it hangs off the `CardsDiscarded` event instead, in `src/cards/match/claw.ts`. `reactiveTriggers` returns the union of the two sources, and the free plays join the same cascade as everything else, so a discarded Claw card that itself discards keeps the chain going (bounded by the same `TRIGGER_CAP`).
+
+"For free" is literal: nothing in that path touches energy, because the card was never played from a hand.
+
+**Not every trip to the discard pile is a discard.** `CardsDiscarded` carries a `reason`:
+
+| `reason`   | When                                              | Claw fires? |
+|------------|---------------------------------------------------|-------------|
+| `discard`  | "Discard 2 cards", the end-of-turn Fog penalty    | **yes**     |
+| `play`     | a card moving to the pile as it is played         | no          |
+| `setup`    | the opening mulligan, before the battle begins    | no          |
+
+The distinction is load-bearing rather than cosmetic. Playing a card moves it to the discard pile through the very same event, so firing on `play` would play every Claw card **twice**; and the mulligan is a setup step, where a Claw card would otherwise resolve before turn 1. The same rule governs the `cardsDiscardedThisTurn` counter, which only `discard` increments.
+
 ### Phase — start / end of turn
 `startTurn` sequences: advance the turn → clear temporary block → fire each **cloud** (Lightning→energy, Snow→heal, Storm→damage a random enemy, Fog→draw) → run start-of-turn persistents (Summer) → **replay each minion** (its compiled text minus re-summoning itself) → draw. `endTurn` makes Fog clouds force a discard (unless Fall) and ends the turn. Each step resolves its own reactive cascade before the next.
 

@@ -38,6 +38,18 @@ describe('battle setup', () => {
     expect(newBattle(OPTS).player.shield).toBe(5);
   });
 
+  it('Seashell replaces the opening draw (6 instead of 5), keeping the same mulligan', () => {
+    const s = newBattle({ character: 'crab', relicId: 'seashell', seed: 'battle-shell' });
+    expect(s.player.hand).toHaveLength(OPENING_HAND + 1);
+    expect(s.player.drawPile).toHaveLength(DECK_SIZE - (OPENING_HAND + 1));
+    // The enemy's opening is untouched by the player's relic.
+    expect(s.enemies[0]!.hand).toHaveLength(OPENING_HAND - OPENING_DISCARD);
+
+    // Still discards the usual 2 — the relic's value is the extra card kept.
+    const { state } = confirmMulligan(s, [0, 1]);
+    expect(state.player.hand).toHaveLength(OPENING_HAND + 1 - OPENING_DISCARD);
+  });
+
   it('mulligan discards the chosen cards and begins turn 1', () => {
     const { state } = confirmMulligan(newBattle(OPTS), [0, 1]);
     expect(state.phase).toBe('playerTurn');
