@@ -58,6 +58,12 @@ export interface Combatant {
   readonly discardedThisTurn: number;
   /** Cloud tokens in play (the Cloud's mechanic). */
   readonly clouds: readonly CloudType[];
+  /**
+   * Extra cloud slots this combatant has earned above the base cap (Outburst,
+   * Spatial Reasoning). Only the *bonus* lives here: the base cap is a game rule
+   * belonging to the cards layer, which the engine must not know about.
+   */
+  readonly bonusMaxClouds: number;
   /** Minions in play (the Wizard's mechanic). */
   readonly minions: readonly MinionState[];
   /**
@@ -95,6 +101,7 @@ export function makeCombatant(
     bravery: 0,
     discardedThisTurn: 0,
     clouds: [],
+    bonusMaxClouds: 0,
     minions: [],
     persistents: [],
     drawPile: [],

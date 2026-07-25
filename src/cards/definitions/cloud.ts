@@ -195,6 +195,33 @@ export const FINAL_SHOCK: CardDef = {
   text: 'Create 3 lightning clouds.',
 };
 
+export const OUTBURST: CardDef = {
+  id: cardId('cloud-outburst'),
+  name: 'Outburst',
+  cost: 1,
+  text: 'Create 1 storm cloud. Increase max clouds by 1.',
+};
+
+export const SPATIAL_REASONING: CardDef = {
+  id: cardId('cloud-spatial-reasoning'),
+  name: 'Spatial Reasoning',
+  cost: 1,
+  text: 'Remove 3 clouds. Increase max clouds by 1.',
+};
+
+/**
+ * Designed as "remove all clouds, deal 2 damage for each cloud removed". The
+ * statements are ordered damage-first because the scale reads your cloud count
+ * at reduce time: counting before the wipe gives exactly "each cloud removed",
+ * where counting after would always be zero.
+ */
+export const DISSOLVE: CardDef = {
+  id: cardId('cloud-dissolve'),
+  name: 'Dissolve',
+  cost: 1,
+  text: 'Deal 2 damage for each cloud. Remove all clouds.',
+};
+
 /** Every Cloud card in this batch, in table order. */
 export const CLOUD_CARDS: readonly CardDef[] = [
   SUN_RAY,
@@ -223,4 +250,7 @@ export const CLOUD_CARDS: readonly CardDef[] = [
   SPARK,
   CLEAR,
   FINAL_SHOCK,
+  OUTBURST,
+  SPATIAL_REASONING,
+  DISSOLVE,
 ];

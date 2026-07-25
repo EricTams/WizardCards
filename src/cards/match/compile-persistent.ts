@@ -117,7 +117,11 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
     case 'create':
       return [{ type: 'CreateClouds', target: self, cloudType: effect.cloudType!, count: amount }];
     case 'remove':
+      // Mirrors the on-play resolver — see the note on `discard` below.
+      if (effect.noun === 'allClouds') return [{ type: 'RemoveAllClouds', target: self }];
       return [{ type: 'RemoveClouds', target: self, count: amount }];
+    case 'increase':
+      return [{ type: 'IncreaseMaxClouds', target: self, amount }];
     case 'discard':
       // Must mirror the on-play resolver's noun handling — before this, every
       // `discard` in a trigger became DiscardMinion, so "discard 1 card" and

@@ -367,8 +367,35 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       const last = group[3] && group[3].type === 'word' ? group[3] : typeTok;
       return { kind: 'Effect', verb: 'create', amount, cloudType, noun: 'clouds', ...span(head, last) };
     }
-    case 'remove':
+    case 'remove': {
+      // "Remove all clouds" carries no number, so it can't use the counted path.
+      const last = group[group.length - 1]!;
+      if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'all')) {
+        return { kind: 'Effect', verb: 'remove', noun: 'allClouds', ...span(head, last) };
+      }
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
+    }
+    case 'increase': {
+      // Only "increase max clouds by N" is understood today.
+      const last = group[group.length - 1]!;
+      const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
+      const numberTok = group.find((t) => t.type === 'number');
+      if (!words.includes('cloud') && !words.includes('clouds')) {
+        diagnostics.push(diag('Only "increase max clouds by N" is supported.', head));
+        return null;
+      }
+      if (!numberTok) {
+        diagnostics.push(diag('"Increase max clouds" needs an amount, e.g. "increase max clouds by 1".', head));
+        return null;
+      }
+      return {
+        kind: 'Effect',
+        verb: 'increase',
+        noun: 'maxClouds',
+        amount: Number(numberTok.value),
+        ...span(head, last),
+      };
+    }
     case 'discard': {
       // "Discard your hand" takes no number, so it can't go through the
       // amount+noun path the counted forms use.

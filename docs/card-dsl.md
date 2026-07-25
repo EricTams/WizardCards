@@ -29,7 +29,8 @@ heal    <number> [noun]            trailing noun ("HP") is decorative
 poison  <number>
 draw    <number> ["card"]
 create  <number> CLOUD "cloud"     CLOUD ∈ lightning | storm | snow | fog
-remove  <number> "cloud"
+remove  <number> "cloud" | remove "all clouds"
+increase "max clouds by" <number>
 discard <number> ("minion" | "card") | discard "your hand"
 "venom" | "drink" | "minion"       bare keyword effects (no number/noun)
 ```
@@ -45,6 +46,8 @@ discard <number> ("minion" | "card") | discard "your hand"
 | `Draw 2 cards.`            | `{ verb:'draw', amount:2, noun:'cards' }`           | `DrawCards(2)`                             |
 | `Create 2 storm clouds.`   | `{ verb:'create', amount:2, cloudType:'storm' }`    | `CreateClouds(self, 'storm', 2)`           |
 | `Remove 1 cloud.`          | `{ verb:'remove', amount:1, noun:'cloud' }`         | `RemoveClouds(self, 1)`                    |
+| `Remove all clouds.`       | `{ verb:'remove', noun:'allClouds' }`                | `RemoveAllClouds(self)`                    |
+| `Increase max clouds by 1.`| `{ verb:'increase', amount:1, noun:'maxClouds' }`    | `IncreaseMaxClouds(self, 1)`               |
 | `Discard 1 minion.`        | `{ verb:'discard', amount:1, noun:'minion' }`       | `DiscardMinion(self, 1)`                   |
 | `Discard 2 cards.`         | `{ verb:'discard', amount:2, noun:'card' }`         | `DiscardCards(self, 2)`                    |
 | `Discard your hand.`       | `{ verb:'discard', noun:'hand' }`                    | `DiscardHand(self)`                        |
@@ -78,6 +81,8 @@ Parsing has two levels: text splits into **sentences** on `.`/`;`, and each sent
 The when-phrase is matched by keywords, so wording is forgiving. A reactive trigger fires **once per unit** — per cloud created, per matching cloud removed, per minion discarded.
 
 **Conditions** — an optional gate. `over N` / `more than N` are **strict** (`op: 'gt'`); `N or more` / `N or greater` are **inclusive** (`op: 'gte'`) — the `or` is what distinguishes them. E.g. `…, if you have over 3 energy, …` → `{ resource: 'energy', op: 'gt', amount: 3 }`, and `…, if you have 5 or more block, …` → `{ resource: 'block', op: 'gte', amount: 5 }`.
+
+**Cloud cap.** `Increase max clouds by N` raises only the *bonus* (`Combatant.bonusMaxClouds`); the base limit is `CLOUD_CAP` in the cards layer, since the engine holds no game rules. Read the effective limit with `cloudCapFor(combatant)` — using the bare constant anywhere the cap is enforced or displayed makes a widened cap silently do nothing.
 
 **Two resolvers, one AST.** On-play effects go through `dsl/resolver.ts`; effects *inside a trigger* go through `resolveTriggerEffect` in `match/compile-persistent.ts`, which resolves with state in hand (so scaling is computed there). A verb that varies its action by noun has to be taught to **both** — `discard` needs its minion/card/hand split in each, or a trigger silently does the wrong one.
 

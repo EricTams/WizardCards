@@ -55,6 +55,7 @@ export type GameEvent =
   | { readonly type: 'CloudsCreated'; readonly target: EntityId; readonly cloudType: CloudType; readonly count: number }
   // `removed` lists the actual cloud types taken away — Static keys off Lightning.
   | { readonly type: 'CloudsRemoved'; readonly target: EntityId; readonly count: number; readonly removed: readonly CloudType[] }
+  | { readonly type: 'MaxCloudsIncreased'; readonly target: EntityId; readonly amount: number }
   | { readonly type: 'MinionSummoned'; readonly owner: EntityId; readonly cardId: CardId }
   | { readonly type: 'MinionDiscarded'; readonly owner: EntityId; readonly count: number }
   | { readonly type: 'PersistentAdded'; readonly target: EntityId; readonly cardId: CardId };
@@ -183,6 +184,18 @@ export function apply(state: GameState, action: Action): ApplyResult {
 
     case 'RemoveClouds':
       return removeClouds(state, action.target, action.count);
+
+    case 'RemoveAllClouds':
+      return removeClouds(state, action.target, findCombatant(state, action.target)?.clouds.length ?? 0);
+
+    case 'IncreaseMaxClouds':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({
+          ...c,
+          bonusMaxClouds: c.bonusMaxClouds + action.amount,
+        })),
+        events: [{ type: 'MaxCloudsIncreased', target: action.target, amount: action.amount }],
+      };
 
     case 'RemoveCloudAt':
       return removeCloudAt(state, action.target, action.index);

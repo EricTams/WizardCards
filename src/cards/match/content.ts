@@ -19,8 +19,17 @@ export const BASE_ENERGY = 1;
 export const BASE_MAX_HP = 20;
 /** Cards in a starting deck (design: "a deck of 20 random cards"). */
 export const DECK_SIZE = 20;
-/** Most clouds a combatant may hold; creating more replaces existing ones. */
+/** Base number of clouds a combatant may hold; creating more replaces existing ones. */
 export const CLOUD_CAP = 3;
+
+/**
+ * This combatant's actual cloud limit — the base cap plus any slots it has won
+ * (Outburst, Spatial Reasoning). Use this rather than CLOUD_CAP anywhere the
+ * limit is enforced or displayed, or a widened cap silently does nothing.
+ */
+export function cloudCapFor(c: { readonly bonusMaxClouds: number }): number {
+  return CLOUD_CAP + c.bonusMaxClouds;
+}
 
 export interface CharacterDef {
   readonly id: CharacterId;

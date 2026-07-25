@@ -31,6 +31,7 @@ export type Verb =
   // cloud effects
   | 'create'
   | 'remove'
+  | 'increase'
   // minion effects
   | 'discard'
   // bare keyword effects (no amount / noun)

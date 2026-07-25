@@ -13,7 +13,7 @@ import {
   applyWithTriggers,
   CHARACTERS,
   OPENING_DISCARD,
-  CLOUD_CAP,
+  cloudCapFor,
   PLAYER_ID,
   ENEMY_ID,
   type BattleOptions,
@@ -291,12 +291,13 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   const decided = state.phase === 'won' || state.phase === 'lost';
   // Over the cloud cap: the player must replace clouds (one at a time) before
   // doing anything else.
-  const overCap = isPlayerTurn && targeting === null && player.clouds.length > CLOUD_CAP;
+  const cloudCap = cloudCapFor(player);
+  const overCap = isPlayerTurn && targeting === null && player.clouds.length > cloudCap;
 
   function removeCloudAt(index: number) {
     const r = applyWithTriggers(state, { type: 'RemoveCloudAt', target: PLAYER_ID, index });
     setState(r.state);
-    setLog(r.state.player.clouds.length > CLOUD_CAP ? 'Replace another cloud…' : 'Clouds set.');
+    setLog(r.state.player.clouds.length > cloudCapFor(r.state.player) ? 'Replace another cloud…' : 'Clouds set.');
   }
 
   // Follow whoever is actually in the battle, not the character in `options` —
@@ -531,7 +532,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
           }}
         >
           <span style={{ ...pill, background: 'rgba(0,0,0,.72)' }}>
-            ☁ Cloud limit is {CLOUD_CAP} — click a cloud to replace ({player.clouds.length - CLOUD_CAP} over)
+            ☁ Cloud limit is {cloudCap} — click a cloud to replace ({player.clouds.length - cloudCap} over)
           </span>
         </div>
       )}

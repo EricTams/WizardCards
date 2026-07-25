@@ -186,6 +186,19 @@ export interface RemoveClouds {
   readonly count: number;
 }
 
+/** Remove every cloud a combatant holds (Dissolve). */
+export interface RemoveAllClouds {
+  readonly type: 'RemoveAllClouds';
+  readonly target: EntityId;
+}
+
+/** Widen a combatant's cloud cap by `amount` slots, for the rest of the battle. */
+export interface IncreaseMaxClouds {
+  readonly type: 'IncreaseMaxClouds';
+  readonly target: EntityId;
+  readonly amount: number;
+}
+
 /** Remove the single cloud at `index` (how the cloud-cap replacement picks one). */
 export interface RemoveCloudAt {
   readonly type: 'RemoveCloudAt';
@@ -253,6 +266,8 @@ export type Action =
   | SummonMinion
   | DiscardMinion
   | ClearTurnCounters
-  | DiscardHand;
+  | DiscardHand
+  | RemoveAllClouds
+  | IncreaseMaxClouds;
 
 export type ActionType = Action['type'];

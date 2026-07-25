@@ -55,6 +55,8 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       return (ctx) => ({ type: 'GainPoison', target: ctx.self, amount });
     case 'draw':
       return (ctx) => ({ type: 'DrawCards', owner: ctx.self, count: amount });
+    case 'increase':
+      return (ctx) => ({ type: 'IncreaseMaxClouds', target: ctx.self, amount });
     case 'create':
       return (ctx) => ({
         type: 'CreateClouds',
@@ -63,7 +65,10 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
         count: amount,
       });
     case 'remove':
-      return (ctx) => ({ type: 'RemoveClouds', target: ctx.self, count: amount });
+      // "Remove all clouds" (Dissolve) vs a counted "Remove 3 clouds".
+      return effect.noun === 'allClouds'
+        ? (ctx) => ({ type: 'RemoveAllClouds', target: ctx.self })
+        : (ctx) => ({ type: 'RemoveClouds', target: ctx.self, count: amount });
     case 'discard':
       // The noun picks the action: "discard 1 minion" (Wizard), "discard 1 card"
       // or "discard your hand" (Crab). The parser admits only these three.

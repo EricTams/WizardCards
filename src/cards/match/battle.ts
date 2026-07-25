@@ -28,7 +28,7 @@ import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
 import type { PlayContext } from '@cards/dsl/resolver';
 import { runWithTriggers, runTurnCascade, startTurn, endTurn, type RunResult } from '@cards/match/index';
-import { BASE_ENERGY, BASE_MAX_HP, DECK_SIZE, CLOUD_CAP, CHARACTERS, enemyDeck, getRelic } from '@cards/match/content';
+import { BASE_ENERGY, BASE_MAX_HP, DECK_SIZE, cloudCapFor, CHARACTERS, enemyDeck, getRelic } from '@cards/match/content';
 
 export const OPENING_HAND = 5;
 export const OPENING_DISCARD = 2;
@@ -234,7 +234,7 @@ function settleAfter(r: RunResult): RunResult {
 }
 
 /**
- * Enforce the cloud cap for an AI actor: while it holds more than CLOUD_CAP
+ * Enforce the cloud cap for an AI actor: while it holds more than its cap
  * clouds, drop the oldest (so freshly-created clouds "replace" older ones). The
  * human does this interactively; the AI just keeps the newest.
  */
@@ -243,7 +243,7 @@ export function capClouds(state: GameState, ownerId: EntityId): RunResult {
   const events: GameEvent[] = [];
   let c = combatantOf(s, ownerId);
   let guard = 0;
-  while (c && c.clouds.length > CLOUD_CAP && guard++ < 20) {
+  while (c && c.clouds.length > cloudCapFor(c) && guard++ < 20) {
     const r = runWithTriggers(s, [{ type: 'RemoveCloudAt', target: ownerId, index: 0 }]);
     s = r.state;
     events.push(...r.events);
@@ -301,7 +301,7 @@ export function aiPlayOne(state: GameState, actorId: EntityId): EnemyPlay | null
     target = candidates[pick.value]!;
   }
   const played = settleAfter(playFromHand({ ...state, rng }, actorId, index, target));
-  const capped = capClouds(played.state, actorId); // AI keeps at most CLOUD_CAP clouds
+  const capped = capClouds(played.state, actorId); // AI keeps at most its cloud cap
   return { state: capped.state, events: [...played.events, ...capped.events], cardId };
 }
 
