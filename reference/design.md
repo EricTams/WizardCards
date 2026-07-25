@@ -416,9 +416,9 @@ Works with Unplayable cards, "burning" them for effects, and building Bravery to
 |-|-|-|
 |32|**Ink**|When you Burn an Unplayable Card, deal 2 Damage to all opponents|
 |33|**Shake-Spear**|When you draw an additional card on your turn, deal 2 damage to a random enemy|
-|34|**Pass**|Cards with Burn cost 1 Less Burn to Play|
+|34|**Direct**|Cards with Burn cost 1 Less Burn to Play|
 |35|**Whiteboard**|Gain Block for each New Unplayable Card in your Hand at the end of your turn|
-|36|**Strategy**|When you draw an Unplayable card, draw 1 additional card|
+|36|**Paper Trail**|When you draw an Unplayable card, draw 1 additional card|
 |37|**Ask AI**|Cards with Find replay their effect for each unplayable card drawn when finding (No Replay for 1 Unplayable Drawn)|
 |38|**Editor**|Draw 1 Additional Card when Finding|
 |39|**Wordsmith**|Burn a random unplayable card in your hand — Gain 1 Energy|
