@@ -564,7 +564,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   );
 }
 
-/** A hero sprite, or a labelled placeholder box for characters without art (Wizard). */
+/** A hero sprite, or a labelled placeholder box for characters without art yet. */
 function HeroUnit({ c, flip = false }: { c: Combatant; flip?: boolean }) {
   const dead = c.hp <= 0;
   const sprite = heroSprite(c.character, dead ? 'die' : 'idle');

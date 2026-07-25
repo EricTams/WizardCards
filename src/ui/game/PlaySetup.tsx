@@ -45,7 +45,8 @@ function CharacterCard({ id, onPick }: { id: PlayChar; onPick: () => void }) {
   return (
     <button onClick={onPick} style={pickCard}>
       <style>{SPRITE_CSS}</style>
-      <div style={{ height: 150, display: 'grid', placeItems: 'center' }}>
+      {/* Tall enough for the tallest hero sheet (Wizard: 112px × 1.4 = 157). */}
+      <div style={{ height: 160, display: 'grid', placeItems: 'center' }}>
         {sprite ? (
           <Sprite sprite={sprite} scale={1.4} />
         ) : (

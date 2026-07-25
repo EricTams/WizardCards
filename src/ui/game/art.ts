@@ -33,20 +33,41 @@ function sheet(path: string, frameW: number, frameH: number, frames: number, dur
   return { url: artUrl(path), frameW, frameH, frames, anim: `spr_${frameW}_${frames}`, durationMs };
 }
 
-/** The Cloud hero's animation set (the only character with hero art today). */
-const CLOUD_HERO = {
+export type HeroPose = 'idle' | 'damage' | 'die' | 'play';
+
+/**
+ * The Cloud hero's animation set. Durations are hand-tuned rather than taken
+ * from the sheet metadata (every frame is authored at a flat 100ms): the idle
+ * reads better slowed right down, and death wants a beat per frame.
+ */
+const CLOUD_HERO: Record<HeroPose, Sprite> = {
   idle: sheet('art/character/cloud/Cloud-Idle.png', 96, 96, 2, 900),
   damage: sheet('art/character/cloud/Cloud-Damage.png', 96, 96, 6, 600),
   die: sheet('art/character/cloud/Cloud-Die.png', 96, 96, 5, 700),
   play: sheet('art/character/cloud/Cloud-Play Card.png', 96, 96, 2, 400),
 };
 
-export type HeroPose = 'idle' | 'damage' | 'die' | 'play';
+/**
+ * The Wizard's set. Drawn on a taller 112x112 canvas than the Cloud, with a
+ * 3-frame hit instead of 6 — timings keep the Cloud's per-frame pacing so the
+ * two heroes read at the same speed side by side.
+ */
+const WIZARD_HERO: Record<HeroPose, Sprite> = {
+  idle: sheet('art/character/wizard/Wizard-Idle.png', 112, 112, 2, 900),
+  damage: sheet('art/character/wizard/Wizard-Damage.png', 112, 112, 3, 300),
+  die: sheet('art/character/wizard/Wizard-Die.png', 112, 112, 5, 700),
+  play: sheet('art/character/wizard/Wizard-Play Card.png', 112, 112, 2, 400),
+};
+
+/** Characters with authored hero art; the rest fall back to a labelled box. */
+const HEROES: Partial<Record<CharacterId, Record<HeroPose, Sprite>>> = {
+  cloud: CLOUD_HERO,
+  wizard: WIZARD_HERO,
+};
 
 /** Hero sprite for a character + pose, or `null` if that character has no art. */
 export function heroSprite(character: CharacterId | undefined, pose: HeroPose): Sprite | null {
-  if (character === 'cloud') return CLOUD_HERO[pose];
-  return null;
+  return (character && HEROES[character]?.[pose]) ?? null;
 }
 
 const CLOUD_LABEL: Record<CloudType, string> = {
@@ -80,11 +101,19 @@ export function cardArtUrl(card: { readonly id: string; readonly name: string })
 export const CARD_ART_W = 96;
 export const CARD_ART_H = 144;
 
-/** `@keyframes` for every sprite sheet we animate (injected once by the screen). */
+/**
+ * `@keyframes` for every sprite sheet we animate (injected once by the screen).
+ * One entry per distinct frame-width × frame-count in use: 96 = Cloud hero,
+ * 112 = Wizard hero, 48 = cloud tokens. A sheet whose pair is missing here
+ * renders its first frame and never scrolls.
+ */
 export const SPRITE_CSS = [
   [96, 2],
   [96, 5],
   [96, 6],
+  [112, 2],
+  [112, 3],
+  [112, 5],
   [48, 2],
 ]
   .map(([w, n]) => `@keyframes spr_${w}_${n}{to{background-position-x:-${w! * n!}px}}`)
