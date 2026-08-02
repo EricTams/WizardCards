@@ -38,7 +38,7 @@ retain  "your poison"
 return  "this card to your hand"
 shuffle ("this card into your draw pile" | "your draw pile")
 move    <number> "card from your discard pile to your draw pile"
-add     "claw to" <number> "cards in your hand" | add "claw to the top card of your draw pile"
+add     "molt to" <number> "cards in your hand" | add "molt to the top card of your draw pile"
 "venom" | "drink" | "minion"       bare keyword effects (no number/noun)
 ```
 
@@ -68,8 +68,8 @@ add     "claw to" <number> "cards in your hand" | add "claw to the top card of y
 | `Shuffle your draw pile.`  | `{ verb:'shuffle', noun:'drawPile' }`                | `ShuffleDrawPile(self)`                    |
 | `Discard 3 cards from your draw pile.` | `{ verb:'discard', amount:3, noun:'drawPile' }` | `DiscardFromDrawPile(self, 3)`     |
 | `Move 1 card from your discard pile to your draw pile.` | `{ verb:'move', amount:1, noun:'discardToDraw' }` | `MoveDiscardToDrawPile(self, 1)` |
-| `Add claw to 2 cards in your hand.` | `{ verb:'add', amount:2, noun:'clawHand' }`   | `AddClawToHand(self, 2)`                   |
-| `Add claw to the top card of your draw pile.` | `{ verb:'add', noun:'clawDrawTop' }` | `AddClawToDrawTop(self)`             |
+| `Add molt to 2 cards in your hand.` | `{ verb:'add', amount:2, noun:'moltHand' }`   | `AddMoltToHand(self, 2)`                   |
+| `Add molt to the top card of your draw pile.` | `{ verb:'add', noun:'moltDrawTop' }` | `AddMoltToDrawTop(self)`             |
 | `Venom.`                   | `{ verb:'venom' }`                                  | `Venom(self, target)`                      |
 | `Drink.`                   | `{ verb:'drink' }`                                  | `Drink(self)`                              |
 | `Minion.`                  | `{ verb:'minion' }`                                 | `SummonMinion(self, sourceCard)`           |
@@ -96,7 +96,7 @@ Parsing has two levels: text splits into **sentences** on `.`/`;`, and each sent
 | `When a minion is discarded, …`                     | `{ event: 'discardMinion' }`                              |
 | `When a minion is replayed, …`                      | `{ event: 'minionReplayed' }`                             |
 | `When you discard a card, …`                        | `{ event: 'discardCard' }`                                |
-| `When you discard a card with claw, …`              | `{ event: 'discardClawCard' }`                            |
+| `When you discard a card with molt, …`              | `{ event: 'discardMoltCard' }`                            |
 | `When you shuffle your deck, …`                     | `{ event: 'shuffleDeck' }`                                |
 | `At the start of your turn, …`                      | `{ event: 'startTurn' }`                                  |
 | `At the end of your turn, …`                        | `{ event: 'endTurn' }`                                    |
@@ -107,13 +107,13 @@ The when-phrase is matched by keywords, so wording is forgiving. A reactive trig
 
 **Random clouds.** A `random` cloud type carries no `cloudType` — the reducer draws one through `state.rng`, so the same seed reproduces the same weather and the action log stays the source of truth. `CreateRandomClouds` emits one `CloudsCreated` per cloud rather than one batched event, since the types differ and "whenever you create a cloud" fires per cloud. `FillCloudSlots` is handed `CLOUD_CAP` as its `baseCap` because the limit is a cards-layer rule; the engine adds the combatant's own bonus.
 
-**Cards are copies, not ids.** Piles hold `CardInstance` — `{ uid, cardId, claw? }` — because a *copy* can carry state its card does not. Granting Claw (Dungeon-ness, Skitter, Decorator) marks one copy, so a second copy of the same card in the same hand stays unmarked, and the mark rides along as the copy moves between piles. `uid` comes from `GameState.idSeq`, keeping identity deterministic across a replay.
+**Cards are copies, not ids.** Piles hold `CardInstance` — `{ uid, cardId, molt? }` — because a *copy* can carry state its card does not. Granting Molt (Dungeon-ness, Skitter, Decorator) marks one copy, so a second copy of the same card in the same hand stays unmarked, and the mark rides along as the copy moves between piles. `uid` comes from `GameState.idSeq`, keeping identity deterministic across a replay.
 
-Two conveniences keep this from leaking everywhere: **events still carry plain `CardId[]`** (with an extra `instances` field on `CardsDiscarded`, since a granted Claw is invisible in an id), and **test fixtures still name piles by card id** — `buildTestState` wraps them, and `pileOf(...)` does the same for tests that build a combatant directly.
+Two conveniences keep this from leaking everywhere: **events still carry plain `CardId[]`** (with an extra `instances` field on `CardsDiscarded`, since a granted Molt is invisible in an id), and **test fixtures still name piles by card id** — `buildTestState` wraps them, and `pileOf(...)` does the same for tests that build a combatant directly.
 
-Granting is deterministic rather than chosen: with no UI for "choose a card", it marks the leftmost unmarked copies. It cannot skip cards that already have Claw *printed*, because that lives in the card language and the engine deliberately knows nothing about card text.
+Granting is deterministic rather than chosen: with no UI for "choose a card", it marks the leftmost unmarked copies. It cannot skip cards that already have Molt *printed*, because that lives in the card language and the engine deliberately knows nothing about card text.
 
-**Pile movement starts from the discard.** A card's own effects resolve *after* playing has already moved it to the discard pile, so "put this card back into your hand" (Sand Kick) and "shuffle this into your draw pile" (Tentacles) are moves out of the discard, keyed by `ctx.sourceCard`. Milling (`Discard N cards from your draw pile`) raises `CardsMilled`, **not** `CardsDiscarded` — those cards never touched a hand, so they must not set off Claw or count toward the turn's discard total.
+**Pile movement starts from the discard.** A card's own effects resolve *after* playing has already moved it to the discard pile, so "put this card back into your hand" (Sand Kick) and "shuffle this into your draw pile" (Tentacles) are moves out of the discard, keyed by `ctx.sourceCard`. Milling (`Discard N cards from your draw pile`) raises `CardsMilled`, **not** `CardsDiscarded` — those cards never touched a hand, so they must not set off Molt or count toward the turn's discard total.
 
 **Retaining Poison.** Venom normally zeroes the caster's Poison. `Retain your poison.` sets `Combatant.venomRetains`, and the *next* Venom keeps its X-value instead of spending it, clearing the flag either way — so it arms exactly one Venom, whether that is the next statement (Sticky Poison) or several cards later (Sacrifice).
 
@@ -129,7 +129,7 @@ Granting is deterministic rather than chosen: with no UI for "choose a card", it
 
 **Modifiers** — the two stat-changing persistents: `Snow clouds heal 2 instead of 1.` → `{ modifier: 'snowHealBonus', amount: 1 }`, and `Fog clouds no longer force a discard.` → `{ modifier: 'suppressFogDiscard' }`.
 
-**`Claw.`** — the Crab's keyword, written as a sentence of its own (`Claw. Deal 4 damage.`) so it can't be mistaken for a verb. It parses to `{ modifier: 'claw' }` and yields **no on-play action**: it marks the card as one that plays for free when *discarded*. The card's other statements are its effects as normal, whether played from hand or fired by Claw. Resolution lives in `src/cards/match/claw.ts` — see `docs/triggers.md`.
+**`Molt.`** — the Crab's keyword, written as a sentence of its own (`Molt. Deal 4 damage.`) so it can't be mistaken for a verb. It parses to `{ modifier: 'molt' }` and yields **no on-play action**: it marks the card as one that plays for free when *discarded*. The card's other statements are its effects as normal, whether played from hand or fired by Molt. Resolution lives in `src/cards/match/molt.ts` — see `docs/triggers.md`.
 
 ## Scaling (`deal` amounts that read state)
 
@@ -161,7 +161,7 @@ The game design (`reference/design.md`) is written in exactly this spirit — ev
 - ✅ **Triggers, conditions, targeting, modifiers** — persistents authored in English (`src/cards/definitions/*-persistents.ts`), compiled by `src/cards/match/compile-persistent.ts`. Still open: more trigger events (draw, block, gain X), richer conditions, and on-play AoE targeting.
 - **More verbs:** `burn`, `find` (Writer), `discard <N> cards` (Crab), Blank/Add (Old Lady), etc.
 
-The design also implies **card attributes** that `CardDef` (currently just `id / name / cost / text`) doesn't carry yet: a **character**, a **type** (Attack / Skill / Persistent), and card **keywords** (Claw, Minion, Unplayable, Blank, Add). For now character is expressed by which definitions file a card lives in and keywords like Venom/Minion are parsed from the text; whether they become structured `CardDef` fields is still an open modeling question.
+The design also implies **card attributes** that `CardDef` (currently just `id / name / cost / text`) doesn't carry yet: a **character**, a **type** (Attack / Skill / Persistent), and card **keywords** (Molt, Minion, Unplayable, Blank, Add). For now character is expressed by which definitions file a card lives in and keywords like Venom/Minion are parsed from the text; whether they become structured `CardDef` fields is still an open modeling question.
 
 Treat the above as direction, not a spec. Keep the grammar small until real cards demand more.
 

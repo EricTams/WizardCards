@@ -11,7 +11,7 @@
 import { metricValue, type Action, type GameEvent, type GameState } from '@engine/index';
 import { parse } from '@cards/dsl/parser';
 import { getCard } from '@cards/registry';
-import { hasClaw } from '@cards/match/claw';
+import { hasMolt } from '@cards/match/molt';
 import type { EffectNode, TriggerCondition, TriggerNode } from '@cards/dsl/ast';
 import { CLOUD_CAP } from '@cards/match/content';
 
@@ -98,14 +98,14 @@ function firingCount(trigger: TriggerNode, state: GameState, event: GameEvent): 
     case 'shuffleDeck':
       return event.type === 'DeckReshuffled' ? 1 : 0;
     case 'discardCard':
-      // Only a real hand-discard, matching Claw — see docs/triggers.md.
+      // Only a real hand-discard, matching Molt — see docs/triggers.md.
       return event.type === 'CardsDiscarded' && event.reason === 'discard' ? event.cards.length : 0;
-    case 'discardClawCard':
+    case 'discardMoltCard':
       if (event.type !== 'CardsDiscarded' || event.reason !== 'discard') return 0;
       return event.instances.filter((inst) => {
-        if (inst.claw === true) return true;
+        if (inst.molt === true) return true;
         const card = getCard(inst.cardId);
-        return card ? hasClaw(card) : false;
+        return card ? hasMolt(card) : false;
       }).length;
     default:
       return 0;
@@ -153,9 +153,9 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
     case 'move':
       return [{ type: 'MoveDiscardToDrawPile', owner: self, count: amount }];
     case 'add':
-      return effect.noun === 'clawDrawTop'
-        ? [{ type: 'AddClawToDrawTop', owner: self }]
-        : [{ type: 'AddClawToHand', owner: self, count: amount }];
+      return effect.noun === 'moltDrawTop'
+        ? [{ type: 'AddMoltToDrawTop', owner: self }]
+        : [{ type: 'AddMoltToHand', owner: self, count: amount }];
     case 'retain':
       return [{ type: 'SetVenomRetains', target: self, value: true }];
     case 'remove':

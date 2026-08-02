@@ -25,7 +25,7 @@ export type Phase = 'setup' | 'mulligan' | 'playerTurn' | 'enemyTurn' | 'won' | 
  * One physical copy of a card, as it sits in a pile.
  *
  * Piles hold these rather than bare CardIds because a *copy* can carry state its
- * card does not: the Crab grants Claw to a specific card in your hand, and only
+ * card does not: the Crab grants Molt to a specific card in your hand, and only
  * that copy gains it. `uid` is minted from `GameState.idSeq`, so identity is
  * deterministic and survives a replay.
  */
@@ -33,7 +33,7 @@ export interface CardInstance {
   readonly uid: number;
   readonly cardId: CardId;
   /** Granted by Dungeon-ness / Skitter / Decorator — this copy only. */
-  readonly claw?: boolean;
+  readonly molt?: boolean;
 }
 
 /** A summoned minion in play. References the card it was summoned from. */

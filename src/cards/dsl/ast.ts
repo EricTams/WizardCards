@@ -76,7 +76,7 @@ export type TriggerEventKind =
   | 'discardMinion'
   | 'minionReplayed'
   | 'discardCard'
-  | 'discardClawCard'
+  | 'discardMoltCard'
   | 'shuffleDeck'
   | 'startTurn'
   | 'endTurn';
@@ -102,13 +102,13 @@ export interface TriggerNode {
 }
 
 /**
- * Static rule changes that aren't trigger→effect (Winter, Fall), plus `claw` —
- * a property of the card itself rather than of the board: a card with Claw plays
+ * Static rule changes that aren't trigger→effect (Winter, Fall), plus `molt` —
+ * a property of the card itself rather than of the board: a card with Molt plays
  * for free when it is discarded (resolved in `src/cards/match`).
  */
 export interface ModifierNode {
   readonly kind: 'Modifier';
-  readonly modifier: 'snowHealBonus' | 'suppressFogDiscard' | 'claw' | 'minionReplayBonus';
+  readonly modifier: 'snowHealBonus' | 'suppressFogDiscard' | 'molt' | 'minionReplayBonus';
   readonly amount?: number;
   readonly start: number;
   readonly end: number;

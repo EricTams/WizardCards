@@ -53,7 +53,7 @@ export interface DiscardCards {
 
 /**
  * Discard `owner`'s whole hand. A real discard, so it counts toward the turn's
- * discard total and sets off Claw on every card that carries it — which is the
+ * discard total and sets off Molt on every card that carries it — which is the
  * point of the Crab cards that use it.
  */
 export interface DiscardHand {
@@ -72,7 +72,7 @@ export interface MoveHandCardToDiscard {
    * Why the card is leaving hand — it rides along on the `CardsDiscarded` event
    * so discard triggers can tell these apart. `'play'` (the default) is a card
    * being played; `'setup'` is the opening mulligan, which happens before the
-   * battle and so must not set off Claw.
+   * battle and so must not set off Molt.
    */
   readonly reason?: 'play' | 'setup';
 }
@@ -276,18 +276,18 @@ export interface MoveDiscardToDrawPile {
 }
 
 /**
- * Grant Claw to `count` cards in hand (Dungeon-ness, Skitter). The mark lands on
+ * Grant Molt to `count` cards in hand (Dungeon-ness, Skitter). The mark lands on
  * the *copies*, so it travels with them and is spent when they leave.
  */
-export interface AddClawToHand {
-  readonly type: 'AddClawToHand';
+export interface AddMoltToHand {
+  readonly type: 'AddMoltToHand';
   readonly owner: EntityId;
   readonly count: number;
 }
 
-/** Grant Claw to the top card of the draw pile (Decorator). */
-export interface AddClawToDrawTop {
-  readonly type: 'AddClawToDrawTop';
+/** Grant Molt to the top card of the draw pile (Decorator). */
+export interface AddMoltToDrawTop {
+  readonly type: 'AddMoltToDrawTop';
   readonly owner: EntityId;
 }
 
@@ -416,7 +416,7 @@ export type Action =
   | ShuffleDrawPile
   | DiscardFromDrawPile
   | MoveDiscardToDrawPile
-  | AddClawToHand
-  | AddClawToDrawTop;
+  | AddMoltToHand
+  | AddMoltToDrawTop;
 
 export type ActionType = Action['type'];

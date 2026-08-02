@@ -29,8 +29,8 @@ export type GameEvent =
   /**
    * Cards left a hand for the discard pile. Only `'discard'` is a discard in the
    * game's sense — the Fog penalty, "discard 2 cards" — and only it may set off
-   * discard triggers like the Crab's Claw. `'play'` is a card moving to the pile
-   * as it is played (firing on that would play every Claw card twice), and
+   * discard triggers like the Crab's Molt. `'play'` is a card moving to the pile
+   * as it is played (firing on that would play every Molt card twice), and
    * `'setup'` is the opening mulligan, which happens before the battle begins.
    */
   | {
@@ -40,7 +40,7 @@ export type GameEvent =
       /**
        * The copies themselves. `cards` stays the plain id list every existing
        * consumer reads; this carries the per-copy marks a trigger may need —
-       * a granted Claw belongs to one copy, and the id alone can't show it.
+       * a granted Molt belongs to one copy, and the id alone can't show it.
        */
       readonly instances: readonly CardInstance[];
       readonly reason: DiscardReason;
@@ -52,7 +52,7 @@ export type GameEvent =
   /** Cards moved discard -> draw pile. */
   | { readonly type: 'CardsRecovered'; readonly owner: EntityId; readonly cards: readonly CardId[] }
   | { readonly type: 'CardReturnedToHand'; readonly owner: EntityId; readonly cardId: CardId }
-  | { readonly type: 'ClawGranted'; readonly owner: EntityId; readonly cards: readonly CardId[] }
+  | { readonly type: 'MoltGranted'; readonly owner: EntityId; readonly cards: readonly CardId[] }
   | { readonly type: 'EnergySet'; readonly target: EntityId; readonly amount: number }
   // `unblocked` is the portion that got past block+shield — what triggers like
   // Rot Away ("whenever you deal unblocked damage") key off.
@@ -240,7 +240,7 @@ export function apply(state: GameState, action: Action): ApplyResult {
           drawPile: cc.drawPile.slice(n),
           discardPile: [...cc.discardPile, ...taken],
         })),
-        // These never touched a hand, so they are not a hand-discard: Claw and
+        // These never touched a hand, so they are not a hand-discard: Molt and
         // the per-turn discard count both key off cards leaving the HAND.
         events: [{ type: 'CardsMilled', owner: action.owner, cards: cardIdsOf(taken) }],
       };
@@ -266,38 +266,38 @@ export function apply(state: GameState, action: Action): ApplyResult {
       };
     }
 
-    case 'AddClawToHand': {
+    case 'AddMoltToHand': {
       // No UI for "choose a card", so it grants to the leftmost unmarked copies
       // — deterministic and replayable. It can't skip cards that already have
-      // Claw from their *text*: that lives in the card language, which the
+      // Molt from their *text*: that lives in the card language, which the
       // engine deliberately knows nothing about. Re-marking one is harmless.
       const c = findCombatant(state, action.owner);
       if (!c) return { state, events: [] };
       let left = Math.max(0, action.count);
       const granted: CardId[] = [];
       const hand = c.hand.map((inst) => {
-        if (left <= 0 || inst.claw) return inst;
+        if (left <= 0 || inst.molt) return inst;
         left -= 1;
         granted.push(inst.cardId);
-        return { ...inst, claw: true };
+        return { ...inst, molt: true };
       });
       if (granted.length === 0) return { state, events: [] };
       return {
         state: mapCombatant(state, action.owner, (cc) => ({ ...cc, hand })),
-        events: [{ type: 'ClawGranted', owner: action.owner, cards: granted }],
+        events: [{ type: 'MoltGranted', owner: action.owner, cards: granted }],
       };
     }
 
-    case 'AddClawToDrawTop': {
+    case 'AddMoltToDrawTop': {
       const c = findCombatant(state, action.owner);
       const top = c?.drawPile[0];
-      if (!c || !top || top.claw) return { state, events: [] };
+      if (!c || !top || top.molt) return { state, events: [] };
       return {
         state: mapCombatant(state, action.owner, (cc) => ({
           ...cc,
-          drawPile: [{ ...top, claw: true }, ...cc.drawPile.slice(1)],
+          drawPile: [{ ...top, molt: true }, ...cc.drawPile.slice(1)],
         })),
-        events: [{ type: 'ClawGranted', owner: action.owner, cards: [top.cardId] }],
+        events: [{ type: 'MoltGranted', owner: action.owner, cards: [top.cardId] }],
       };
     }
 

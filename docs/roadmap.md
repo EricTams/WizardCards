@@ -39,16 +39,16 @@ The one-battle loop the design describes (`reference/design.md` → "Game Setup 
 - ✅ **Energy economy & turn structure:** base 1 energy/turn (`SetEnergy` reset) + Lightning clouds; draw 1 per turn; reshuffle on deckout.
 - ✅ **Block** (temporary) vs. **Shield** (persistent) — already two distinct resources on `Combatant`.
 - ✅ **Game view** (`src/ui/game/BattleScreen.tsx`): the full battle screen from the mockups, using the hand-drawn art for cards/heroes/clouds and HTML for every numeric value; character/relic select (`PlaySetup.tsx`) at `#/play`.
-- ✅ **The Cloud is fully authored** — all 40 designed cards, including its seven Persistents. The Wizard is at 37/40 (only minion-*protection* cards remain) and the Crab at 33/40. Piles hold card *copies* (`CardInstance`), so per-copy state like a granted Claw is possible.
-- ✅ **The Crab** (`src/cards/definitions/crab.ts`): 21 cards + Crab Trap and Exoskeleton, playable from character select on the `beach` theme, with the **Claw** keyword (`src/cards/match/claw.ts`), `discard N cards`, scaling off `cardsDiscardedThisTurn`, and the Seashell relic (opening hand of 6 instead of 5).
-- ⏳ Still open: the rest of the ~40-card pools (what remains needs deck manipulation, choosing a card from hand, replaying a card, or granting Claw) + Persistent cards in decks, a richer/varied enemy model (enemy persistents & clouds), multi-target/AoE selection, the Old Lady and the Writer, and formal move-intent validation. The **game log** (below) is also still to come in the game view.
+- ✅ **The Cloud is fully authored** — all 40 designed cards, including its seven Persistents. The Wizard is at 37/40 (only minion-*protection* cards remain) and the Crab at 33/40. Piles hold card *copies* (`CardInstance`), so per-copy state like a granted Molt is possible.
+- ✅ **The Crab** (`src/cards/definitions/crab.ts`): 21 cards + Crab Trap and Exoskeleton, playable from character select on the `beach` theme, with the **Molt** keyword (`src/cards/match/molt.ts`), `discard N cards`, scaling off `cardsDiscardedThisTurn`, and the Seashell relic (opening hand of 6 instead of 5).
+- ⏳ Still open: the rest of the ~40-card pools (what remains needs deck manipulation, choosing a card from hand, replaying a card, or granting Molt) + Persistent cards in decks, a richer/varied enemy model (enemy persistents & clouds), multi-target/AoE selection, the Old Lady and the Writer, and formal move-intent validation. The **game log** (below) is also still to come in the game view.
 
 Several design ambiguities that gated this phase are now decided (energy economy, enemy model = same card system, no turn limit) — see `vision.md`.
 
 ## Phase 3 — Content & balance
 
 - Author the 5 character card sets from `reference/design.md` in English — Attacks / Skills / Persistents — each with edge-case fixtures, plus the relics.
-- The per-character **status/keyword systems** these cards need: Clouds (Lightning/Snow/Fog/Storm), Poison/Venom/Drink & Minions, Claw/discard, Blank/Add & Power, Unplayable/Burn/Find & Bravery, and Persistent (ongoing) cards.
+- The per-character **status/keyword systems** these cards need: Clouds (Lightning/Snow/Fog/Storm), Poison/Venom/Drink & Minions, Molt/discard, Blank/Add & Power, Unplayable/Burn/Find & Bravery, and Persistent (ongoing) cards.
 - Coverage thresholds enabled.
 - Balancing tools (the Card Lab as a design aid).
 

@@ -164,49 +164,49 @@ The Crab takes advantage of discarding cards by having cards that are played whe
 
 ## Main Mechanics
 
-* **Claw** — Whenever this card is discarded, it plays for free.
+* **Molt** — Whenever this card is discarded, it plays for free.
 
 ## Attacks
 
 |#|Name|Effect|
 |-|-|-|
-|1|**Little Splash**|Deal 8 Damage|
-|2|**Pinch**|*Claw* — Deal 4 Damage|
+|1|**Little Splash**|Deal 6 Damage|
+|2|**Pinch**|*Molt* — Deal 4 Damage|
 |3|**Quicksand**|Discard 1, Deal 2 Damage|
 |4|**Blend In**|Deal 4 Damage, Gain 2 Shields|
-|5|**Smack**|Deal 2 Damage — The next card you discard with Claw is played twice|
-|6|**Locator**|*Claw* — Deal 1 Damage for each card discarded this turn|
-|7|**Swipe**|*Claw* — Draw 2 Cards, Deal 6 Damage|
-|8|**Sand Kick**|*Claw* — Deal 2 Damage, Put this card back into your hand|
-|9|**Tentacles**|Gain 1 Energy, Deal 4 Damage — Shuffle this into your draw pile|
+|5|**Smack**|Deal 2 Damage — The next card you discard with Molt is played twice|
+|6|**Locator**|*Molt* — Deal 1 Damage for each card discarded this turn|
+|7|**Swipe**|*Molt* — Draw 2 Cards, Deal 3 Damage|
+|8|**Sand Kick**|*Molt* — Deal 2 Damage, Put this card back into your hand|
+|9|**Tentacles**|Gain 1 Energy, Deal 2 Damage — Shuffle this into your draw pile|
 
 ## Skills
 
 |#|Name|Effect|
 |-|-|-|
-|10|**Hermit**|*Claw* — Heal 2, Discard 1|
+|10|**Hermit**|*Molt* — Heal 2, Discard 1|
 |11|**Steamroll**|Gain 2 Shields, Draw 1, Discard 1|
 |12|**Snip**|Draw 2|
 |13|**Waterspout**|Heal 1, Draw 1, Discard 1|
-|14|**Glacial Melt**|*Claw* — Draw 1, Gain 1 Energy|
-|15|**Hook**|*Claw* — Gain 2 Energy|
+|14|**Glacial Melt**|*Molt* — Draw 1, Gain 1 Energy|
+|15|**Hook**|*Molt* — Gain 2 Energy|
 |16|**Ecdycis**|Draw 3|
 |17|**Refresh**|Gain 1 Energy, Discard your hand, Draw 3 Cards|
 |18|**Double Draw**|Draw 2, Discard 2|
 |19|**Sandbed**|Heal 1, Gain 4 Shields|
 |20|**An-Enemy**|Gain 1 Shield, Gain 1 Energy|
 |21|**Boil**|Gain 1 Energy, Discard 3|
-|22|**Pickle Pal**|*Claw* — Gain 5 Shields|
+|22|**Pickle Pal**|*Molt* — Gain 5 Shields|
 |23|**One Finger Touch**|Draw 3, Discard 1|
 |24|**Crab Walk**|Shuffle your deck. Discard the top 3 Cards of your Draw Pile|
 |25|**Marine Life**|When you draw a card this turn, draw it from your discard pile until it is emptied|
-|26|**Filter Feed**|*Claw* — Choose a card in your hand. Put a copy of that card into your draw pile|
+|26|**Filter Feed**|*Molt* — Choose a card in your hand. Put a copy of that card into your draw pile|
 |27|**Dry Out**|Gain 4 Shields, Put a card from your discard pile into your draw pile|
 |28|**Scuttle**|Discard 2. Whenever you play one of the cards discarded this way, deal 2 Damage to a random opponent|
-|29|**Dungeon-ness**|Gain 3 Shields. Add Claw to a card in your hand|
+|29|**Dungeon-ness**|Gain 3 Shields. Add Molt to a card in your hand|
 |30|**Shell**|Gain 1 Energy. Your next card is played twice|
-|31|**Low Tide**|*Claw* — Heal 1, Draw 1|
-|32|**Skitter**|*Claw* — Add Claw to 2 Cards in your Hand|
+|31|**Low Tide**|*Molt* — Heal 1, Draw 1|
+|32|**Skitter**|*Molt* — Add Molt to 2 Cards in your Hand|
 |33|**Flying Fish**|The next time you discard, draw cards equal to the cards you discarded with the card used to discard|
 
 ## Persistents
@@ -218,8 +218,8 @@ The Crab takes advantage of discarding cards by having cards that are played whe
 |36|**Decapod**|If you discard 10 Cards on your turn, deal 10 Damage to all opponents|
 |37|**Crab Trap**|At the start of your turn, draw 1 additional card|
 |38|**Eyestalks**|If you discard your entire hand on your turn, gain 2 Energy|
-|39|**Decorator**|When you shuffle your deck, the top card of your draw pile gains Claw|
-|40|**Prawn**|When you discard a card with Claw, deal 3 Damage to an opponent of your choice|
+|39|**Decorator**|When you shuffle your deck, the top card of your draw pile gains Molt|
+|40|**Prawn**|When you discard a card with Molt, deal 3 Damage to an opponent of your choice|
 
 \---
 
@@ -246,7 +246,7 @@ The Wizard uses Poison to store an X Value that can be used to do spells.
 |6|**Slice**|Deal 4 Damage, Gain 1 Energy|
 |7|**Crystal Ball**|Deal 1 Damage for each Minion currently in Play|
 |8|**Throw**|Deal 8 Damage, Discard 1 Minion|
-|9|**Hurl**|Discard 2 Minions, Deal Damage equal to your block|
+|9|**Hurl**|Discard 2 Minions, Deal Damage equal to your defense|
 |10|**Hostile**|Venom, Drink|
 |11|**Seek**|Venom, Gain 1 Energy|
 |12|**Pour**|Venom, Gain 3 Shields|
@@ -305,7 +305,7 @@ The Old Lady has the Lowest Attacks of any character, but makes up for it by inc
 
 |#|Name|Effect|
 |-|-|-|
-|1|**Throwing Stars**|Deal 1 Damage, Gain 1 Energy|
+|1|**Sharp Strike**|Deal 1 Damage, Gain 1 Energy|
 |2|**Smoke Bomb**|Gain 4 Shields, Deal 3 Damage, Gain 2 Power, Lose 1 HP|
 |3|**Evil Glare**|Deal 3 Damage, Lose 1 HP|
 |4|**Swords at the Ready**|*Add* — Deal 2 Damage|
@@ -447,8 +447,8 @@ Works with Unplayable cards, "burning" them for effects, and building Bravery to
 
 |#|Name|Effect|
 |-|-|-|
-|1|**Fossil**|At the start of combat, after drawing 5 cards, choose a card to add Claw to|
-|2|**Toy Boat**|Attacks with Claw deal 1 Additional damage|
+|1|**Fossil**|At the start of combat, after drawing 5 cards, choose a card to add Molt to|
+|2|**Toy Boat**|Attacks with Molt deal 1 Additional damage|
 |3|**Fish Food**|Whenever you play a card with discard, Gain 1 Shield|
 |4|**Whale**|When you shuffle, Draw 2 Cards|
 |5|**Seashell**|Your opening hand draws 6 Cards instead of 5 — you still discard 2, so you keep one extra|

@@ -4,7 +4,7 @@ import {
   buildTestState, playFromHand, confirmMulligan, startTurn, endTurn, pileOf, TEST_SELF, TEST_TARGET,
 } from '@cards/index';
 import { applyWithTriggers } from '@cards/match/index';
-import { hasClaw } from '@cards/match/claw';
+import { hasMolt } from '@cards/match/molt';
 import {
   PINCH, LITTLE_SPLASH, HERMIT, LOCATOR, BOIL, QUICKSAND, REFRESH,
   SAND_KICK, TENTACLES, CRAB_WALK, DRY_OUT, DUNGEON_NESS, SKITTER, SNIP,
@@ -14,15 +14,15 @@ import type { CardId } from '@shared/index';
 
 const enemyHp = (s: ReturnType<typeof buildTestState>) => s.enemies[0]!.hp;
 
-describe('Claw — reading the keyword', () => {
+describe('Molt — reading the keyword', () => {
   it('is carried by cards whose text declares it, and not by others', () => {
-    expect(hasClaw(PINCH)).toBe(true);
-    expect(hasClaw(HERMIT)).toBe(true);
-    expect(hasClaw(LITTLE_SPLASH)).toBe(false);
+    expect(hasMolt(PINCH)).toBe(true);
+    expect(hasMolt(HERMIT)).toBe(true);
+    expect(hasMolt(LITTLE_SPLASH)).toBe(false);
   });
 
   it('does not turn the keyword into an on-play effect', () => {
-    // "Claw. Deal 4 damage." must still deal exactly 4 — the keyword is a
+    // "Molt. Deal 4 damage." must still deal exactly 4 — the keyword is a
     // property of the card, not an extra statement.
     const state = buildTestState({ player: { energy: 5, hand: [PINCH.id] }, target: { hp: 30, maxHp: 30 } });
     const { state: after } = playFromHand(state, TEST_SELF, 0);
@@ -30,7 +30,7 @@ describe('Claw — reading the keyword', () => {
   });
 });
 
-describe('Claw — plays for free when discarded', () => {
+describe('Molt — plays for free when discarded', () => {
   it('fires on a genuine discard', () => {
     const state = buildTestState({
       player: { energy: 0, hand: [PINCH.id] },
@@ -44,15 +44,15 @@ describe('Claw — plays for free when discarded', () => {
     expect(cardIdsOf(after.player.discardPile)).toEqual([PINCH.id]);
   });
 
-  it('does NOT fire for a card without Claw', () => {
+  it('does NOT fire for a card without Molt', () => {
     const state = buildTestState({ player: { hand: [LITTLE_SPLASH.id] }, target: { hp: 30, maxHp: 30 } });
     const { state: after } = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 1 });
     expect(after.enemies[0]!.hp).toBe(30);
   });
 
-  it('does NOT fire when the card is played — a Claw card is not played twice', () => {
+  it('does NOT fire when the card is played — a Molt card is not played twice', () => {
     // playFromHand moves the card to the discard pile, which emits the same
-    // CardsDiscarded event. Only `reason: 'discard'` may trigger Claw.
+    // CardsDiscarded event. Only `reason: 'discard'` may trigger Molt.
     const state = buildTestState({ player: { energy: 5, hand: [PINCH.id] }, target: { hp: 30, maxHp: 30 } });
     const { state: after } = playFromHand(state, TEST_SELF, 0);
     expect(enemyHp(after)).toBe(26); // 4, not 8
@@ -77,17 +77,17 @@ describe('Claw — plays for free when discarded', () => {
     expect(after.player.hp).toBe(state.player.hp); // …not us
   });
 
-  it("an enemy Crab's Claw aims back at the player — reachable in Attract Mode", () => {
+  it("an enemy Crab's Molt aims back at the player — reachable in Attract Mode", () => {
     const base = buildTestState({ player: { hp: 30, maxHp: 30 }, target: { hp: 30, maxHp: 30 } });
     const state = { ...base, enemies: [{ ...base.enemies[0]!, hand: pileOf(PINCH.id) }] };
     const { state: after } = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_TARGET, count: 1 });
-    expect(after.player.hp).toBe(26); // the enemy's Claw hit us
+    expect(after.player.hp).toBe(26); // the enemy's Molt hit us
     expect(after.enemies[0]!.hp).toBe(30); // it did not hit itself
   });
 
-  it('chains — a discarded Claw card that itself discards keeps the cascade going', () => {
-    // Hermit: "Claw. Heal 2. Discard 1 card." Discarding it heals and discards
-    // Pinch beneath it, whose own Claw then fires.
+  it('chains — a discarded Molt card that itself discards keeps the cascade going', () => {
+    // Hermit: "Molt. Heal 2. Discard 1 card." Discarding it heals and discards
+    // Pinch beneath it, whose own Molt then fires.
     const state = buildTestState({
       player: { hp: 10, maxHp: 30, energy: 0, hand: [PINCH.id, HERMIT.id] },
       target: { hp: 30, maxHp: 30 },
@@ -95,13 +95,13 @@ describe('Claw — plays for free when discarded', () => {
     const { state: after } = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 1 });
 
     expect(after.player.hp).toBe(12); // Hermit healed 2
-    expect(after.enemies[0]!.hp).toBe(26); // then Pinch's Claw dealt 4
+    expect(after.enemies[0]!.hp).toBe(26); // then Pinch's Molt dealt 4
     expect(after.player.hand).toHaveLength(0);
   });
 });
 
 describe('discard your hand', () => {
-  it('Refresh dumps the hand — firing any Claw on the way out — then redraws 3', () => {
+  it('Refresh dumps the hand — firing any Molt on the way out — then redraws 3', () => {
     const state = buildTestState({
       player: {
         energy: 5,
@@ -188,7 +188,7 @@ describe('moving cards between piles', () => {
     expect(after.player.discardPile).toHaveLength(0); // …not left in the discard
   });
 
-  it('Sand Kick also returns itself when discarded, via Claw', () => {
+  it('Sand Kick also returns itself when discarded, via Molt', () => {
     const state = buildTestState({
       player: { energy: 0, hand: [SAND_KICK.id] },
       target: { hp: 30, maxHp: 30 },
@@ -204,7 +204,7 @@ describe('moving cards between piles', () => {
       target: { hp: 30, maxHp: 30 },
     });
     const { state: after } = playFromHand(state, TEST_SELF, 0);
-    expect(after.enemies[0]!.hp).toBe(26);
+    expect(after.enemies[0]!.hp).toBe(28);
     expect(cardIdsOf(after.player.drawPile)).toContain(TENTACLES.id);
     expect(after.player.drawPile).toHaveLength(3);
     expect(after.player.discardPile).toHaveLength(0);
@@ -257,35 +257,35 @@ describe('the discard-counting persistents', () => {
     expect(applyWithTriggers(emptied, { type: 'DiscardHand', owner: TEST_SELF }).state.player.energy).toBeGreaterThan(0);
   });
 
-  it('Prawn fires per discarded Claw card, ignoring the rest', () => {
-    const withClaw = buildTestState({
+  it('Prawn fires per discarded Molt card, ignoring the rest', () => {
+    const withMolt = buildTestState({
       player: { persistents: [PRAWN.id], hand: [LITTLE_SPLASH.id, PINCH.id] },
       target: { hp: 40, maxHp: 40 },
     });
-    const a = applyWithTriggers(withClaw, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state;
-    expect(a.enemies[0]!.hp).toBe(40 - 3 - 4); // Prawn's 3, plus Pinch's own Claw
+    const a = applyWithTriggers(withMolt, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state;
+    expect(a.enemies[0]!.hp).toBe(40 - 3 - 4); // Prawn's 3, plus Pinch's own Molt
 
-    const noClaw = buildTestState({
+    const noMolt = buildTestState({
       player: { persistents: [PRAWN.id], hand: [LITTLE_SPLASH.id] },
       target: { hp: 40, maxHp: 40 },
     });
-    expect(applyWithTriggers(noClaw, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state.enemies[0]!.hp).toBe(40);
+    expect(applyWithTriggers(noMolt, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state.enemies[0]!.hp).toBe(40);
   });
 });
 
-describe('granted Claw — the per-copy mark', () => {
-  it('Dungeon-ness marks a card that had no Claw, and it then fires on discard', () => {
+describe('granted Molt — the per-copy mark', () => {
+  it('Dungeon-ness marks a card that had no Molt, and it then fires on discard', () => {
     const state = buildTestState({
       player: { energy: 5, hand: [LITTLE_SPLASH.id, DUNGEON_NESS.id] },
       target: { hp: 40, maxHp: 40 },
     });
     const marked = playFromHand(state, TEST_SELF, 1).state;
     expect(marked.player.shield).toBe(3);
-    expect(marked.player.hand[0]!.claw).toBe(true); // Little Splash now carries it
+    expect(marked.player.hand[0]!.molt).toBe(true); // Little Splash now carries it
 
     // Discarding it plays it for free, which a plain Little Splash never does.
     const after = applyWithTriggers(marked, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state;
-    expect(after.enemies[0]!.hp).toBe(32); // its 8 damage
+    expect(after.enemies[0]!.hp).toBe(34); // its 6 damage
   });
 
   it('marks the copy, not the card — an identical copy stays unmarked', () => {
@@ -294,17 +294,17 @@ describe('granted Claw — the per-copy mark', () => {
       target: { hp: 40, maxHp: 40 },
     });
     const marked = playFromHand(state, TEST_SELF, 2).state;
-    expect(marked.player.hand.map((c) => c.claw === true)).toEqual([true, false]);
+    expect(marked.player.hand.map((c) => c.molt === true)).toEqual([true, false]);
   });
 
-  it('Skitter marks two, and its own printed Claw still works', () => {
+  it('Skitter marks two, and its own printed Molt still works', () => {
     const state = buildTestState({
       player: { energy: 0, hand: [LITTLE_SPLASH.id, SNIP.id, SKITTER.id] },
       target: { hp: 40, maxHp: 40 },
     });
-    // Discard Skitter itself: printed Claw fires it, which marks the two below.
+    // Discard Skitter itself: printed Molt fires it, which marks the two below.
     const after = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 1 }).state;
-    expect(after.player.hand.map((c) => c.claw === true)).toEqual([true, true]);
+    expect(after.player.hand.map((c) => c.molt === true)).toEqual([true, true]);
   });
 
   it('the mark survives moving between piles', () => {
@@ -313,10 +313,10 @@ describe('granted Claw — the per-copy mark', () => {
       target: { hp: 40, maxHp: 40 },
     });
     const marked = playFromHand(state, TEST_SELF, 1).state;
-    expect(marked.player.hand[0]!.claw).toBe(true);
+    expect(marked.player.hand[0]!.molt).toBe(true);
     // Sand Kick returns itself to hand; the granted mark must come back with it.
     const played = playFromHand(marked, TEST_SELF, 0).state;
-    expect(played.player.hand[0]!.claw).toBe(true);
+    expect(played.player.hand[0]!.molt).toBe(true);
   });
 
   it('Decorator marks the top of the draw pile whenever the deck is shuffled', () => {
@@ -324,8 +324,8 @@ describe('granted Claw — the per-copy mark', () => {
       player: { persistents: [DECORATOR.id], drawPile: ['a', 'b', 'c', 'd'] as CardId[] },
     });
     const after = applyWithTriggers(state, { type: 'ShuffleDrawPile', owner: TEST_SELF }).state;
-    expect(after.player.drawPile[0]!.claw).toBe(true);
-    expect(after.player.drawPile.filter((c) => c.claw).length).toBe(1); // just the top
+    expect(after.player.drawPile[0]!.molt).toBe(true);
+    expect(after.player.drawPile.filter((c) => c.molt).length).toBe(1); // just the top
   });
 
   it('Crab Walk mills away the card Decorator just marked — shuffle, then cut', () => {
@@ -340,7 +340,7 @@ describe('granted Claw — the per-copy mark', () => {
       },
     });
     const after = playFromHand(state, TEST_SELF, 0).state;
-    expect(after.player.drawPile[0]!.claw).toBeUndefined();
-    expect(after.player.discardPile.some((c) => c.claw === true)).toBe(true);
+    expect(after.player.drawPile[0]!.molt).toBeUndefined();
+    expect(after.player.discardPile.some((c) => c.molt === true)).toBe(true);
   });
 });

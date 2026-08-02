@@ -1,16 +1,16 @@
 /**
  * The Crab — card definitions.
  *
- * The Crab turns discarding from a cost into an engine: its cards carry **Claw**
+ * The Crab turns discarding from a cost into an engine: its cards carry **Molt**
  * ("whenever this card is discarded, it plays for free"), so the cards that make
  * you discard and the cards that reward being discarded are the same deck. Where
  * the Cloud builds a board of clouds, the Crab churns its hand.
  *
  * This batch is the subset expressible with today's grammar (deal / heal / gain /
- * draw / discard cards / discard your hand / Claw / scaling off cards discarded this turn), matching
+ * draw / discard cards / discard your hand / Molt / scaling off cards discarded this turn), matching
  * how the Cloud and Wizard pools shipped. The rest of the designed 40 need
  * machinery that doesn't exist yet — choosing a card from hand, moving cards
- * between piles, replaying a card, granting Claw to another card — see
+ * between piles, replaying a card, granting Molt to another card — see
  * `docs/roadmap.md`.
  *
  * Card ids are character-prefixed (`crab-…`) so names that repeat across
@@ -26,14 +26,14 @@ export const LITTLE_SPLASH: CardDef = {
   id: cardId('crab-little-splash'),
   name: 'Little Splash',
   cost: 1,
-  text: 'Deal 8 damage.',
+  text: 'Deal 6 damage.',
 };
 
 export const PINCH: CardDef = {
   id: cardId('crab-pinch'),
   name: 'Pinch',
   cost: 1,
-  text: 'Claw. Deal 4 damage.',
+  text: 'Molt. Deal 4 damage.',
 };
 
 export const QUICKSAND: CardDef = {
@@ -55,14 +55,14 @@ export const LOCATOR: CardDef = {
   id: cardId('crab-locator'),
   name: 'Locator',
   cost: 1,
-  text: 'Claw. Deal 1 damage for each card discarded this turn.',
+  text: 'Molt. Deal 1 damage for each card discarded this turn.',
 };
 
 export const SWIPE: CardDef = {
   id: cardId('crab-swipe'),
   name: 'Swipe',
   cost: 1,
-  text: 'Claw. Draw 2 cards. Deal 6 damage.',
+  text: 'Molt. Draw 2 cards. Deal 3 damage.',
 };
 
 // --- skills ------------------------------------------------------------------
@@ -71,7 +71,7 @@ export const HERMIT: CardDef = {
   id: cardId('crab-hermit'),
   name: 'Hermit',
   cost: 1,
-  text: 'Claw. Heal 2. Discard 1 card.',
+  text: 'Molt. Heal 2. Discard 1 card.',
 };
 
 export const STEAMROLL: CardDef = {
@@ -99,14 +99,14 @@ export const GLACIAL_MELT: CardDef = {
   id: cardId('crab-glacial-melt'),
   name: 'Glacial Melt',
   cost: 1,
-  text: 'Claw. Draw 1 card. Gain 1 energy.',
+  text: 'Molt. Draw 1 card. Gain 1 energy.',
 };
 
 export const HOOK: CardDef = {
   id: cardId('crab-hook'),
   name: 'Hook',
   cost: 1,
-  text: 'Claw. Gain 2 energy.',
+  text: 'Molt. Gain 2 energy.',
 };
 
 export const ECDYCIS: CardDef = {
@@ -148,7 +148,7 @@ export const PICKLE_PAL: CardDef = {
   id: cardId('crab-pickle-pal'),
   name: 'Pickle Pal',
   cost: 1,
-  text: 'Claw. Gain 5 shields.',
+  text: 'Molt. Gain 5 shields.',
 };
 
 export const ONE_FINGER_TOUCH: CardDef = {
@@ -158,7 +158,7 @@ export const ONE_FINGER_TOUCH: CardDef = {
   text: 'Draw 3 cards. Discard 1 card.',
 };
 
-/** Dump the hand and refill — every Claw card dumped fires on the way out. */
+/** Dump the hand and refill — every Molt card dumped fires on the way out. */
 export const REFRESH: CardDef = {
   id: cardId('crab-refresh'),
   name: 'Refresh',
@@ -170,22 +170,22 @@ export const LOW_TIDE: CardDef = {
   id: cardId('crab-low-tide'),
   name: 'Low Tide',
   cost: 1,
-  text: 'Claw. Heal 1. Draw 1 card.',
+  text: 'Molt. Heal 1. Draw 1 card.',
 };
 
-/** Claw plus recursion: discarding it deals damage AND hands it back to you. */
+/** Molt plus recursion: discarding it deals damage AND hands it back to you. */
 export const SAND_KICK: CardDef = {
   id: cardId('crab-sand-kick'),
   name: 'Sand Kick',
   cost: 1,
-  text: 'Claw. Deal 2 damage. Return this card to your hand.',
+  text: 'Molt. Deal 2 damage. Return this card to your hand.',
 };
 
 export const TENTACLES: CardDef = {
   id: cardId('crab-tentacles'),
   name: 'Tentacles',
   cost: 1,
-  text: 'Gain 1 energy. Deal 4 damage. Shuffle this card into your draw pile.',
+  text: 'Gain 1 energy. Deal 2 damage. Shuffle this card into your draw pile.',
 };
 
 export const CRAB_WALK: CardDef = {
@@ -206,14 +206,14 @@ export const DUNGEON_NESS: CardDef = {
   id: cardId('crab-dungeon-ness'),
   name: 'Dungeon-ness',
   cost: 1,
-  text: 'Gain 3 shields. Add claw to 1 card in your hand.',
+  text: 'Gain 3 shields. Add molt to 1 card in your hand.',
 };
 
 export const SKITTER: CardDef = {
   id: cardId('crab-skitter'),
   name: 'Skitter',
   cost: 1,
-  text: 'Claw. Add claw to 2 cards in your hand.',
+  text: 'Molt. Add molt to 2 cards in your hand.',
 };
 
 /** The pool a Crab deck is drawn from. */

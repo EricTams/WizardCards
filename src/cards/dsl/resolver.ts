@@ -91,9 +91,9 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
     case 'double':
       return (ctx) => ({ type: 'SetCloudsPlayTwice', target: ctx.self, value: true });
     case 'add':
-      return effect.noun === 'clawDrawTop'
-        ? (ctx) => ({ type: 'AddClawToDrawTop', owner: ctx.self })
-        : (ctx) => ({ type: 'AddClawToHand', owner: ctx.self, count: amount });
+      return effect.noun === 'moltDrawTop'
+        ? (ctx) => ({ type: 'AddMoltToDrawTop', owner: ctx.self })
+        : (ctx) => ({ type: 'AddMoltToHand', owner: ctx.self, count: amount });
     case 'return':
       return (ctx) => ({ type: 'ReturnCardToHand', owner: ctx.self, cardId: ctx.sourceCard });
     case 'shuffle':

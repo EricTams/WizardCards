@@ -27,7 +27,7 @@ import type { PlayContext } from '@cards/dsl/resolver';
 import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
 import { activePersistents } from '@cards/match/persistents';
-import { clawTriggers } from '@cards/match/claw';
+import { moltTriggers } from '@cards/match/molt';
 
 export interface RunResult {
   readonly state: GameState;
@@ -39,14 +39,14 @@ const TRIGGER_CAP = 1000;
 
 /**
  * Follow-up actions one event owes: what the active persistents want, plus the
- * free plays from any discarded Claw cards. Two sources because they live in
- * different places — persistents react from the play area, a Claw card reacts as
- * it leaves the hand (see `claw.ts`).
+ * free plays from any discarded Molt cards. Two sources because they live in
+ * different places — persistents react from the play area, a Molt card reacts as
+ * it leaves the hand (see `molt.ts`).
  */
 export function reactiveTriggers(state: GameState, event: GameEvent): Action[] {
   return [
     ...activePersistents(state).flatMap((p) => (p.onEvent ? p.onEvent(state, event) : [])),
-    ...clawTriggers(state, event),
+    ...moltTriggers(state, event),
   ];
 }
 

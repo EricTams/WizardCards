@@ -65,8 +65,8 @@ export function parse(source: string): Result<CardScript, Diagnostic[]> {
     if (TRIGGER_LEADS.has(lead)) {
       const trigger = parseTrigger(sentence, diagnostics);
       if (trigger) triggers.push(trigger);
-    } else if (isClawSentence(sentence)) {
-      modifiers.push({ kind: 'Modifier', modifier: 'claw', start: head.start, end: sentence[sentence.length - 1]!.end });
+    } else if (isMoltSentence(sentence)) {
+      modifiers.push({ kind: 'Modifier', modifier: 'molt', start: head.start, end: sentence[sentence.length - 1]!.end });
     } else if (isModifierSentence(sentence)) {
       const modifier = parseModifier(sentence, diagnostics);
       if (modifier) modifiers.push(modifier);
@@ -151,11 +151,11 @@ function parseEventPhrase(
   }
   if (has('unblocked') && has('damage')) return { event: 'dealUnblockedDamage' };
   if ((has('minion') || has('minions')) && has('replayed')) return { event: 'minionReplayed' };
-  // Card discards. The Claw-qualified form is the narrower reading of the same
+  // Card discards. The Molt-qualified form is the narrower reading of the same
   // words, so it has to be tested first.
   if (has('shuffle') || has('shuffled')) return { event: 'shuffleDeck' };
   if ((has('card') || has('cards')) && (has('discard') || has('discarded'))) {
-    return has('claw') ? { event: 'discardClawCard' } : { event: 'discardCard' };
+    return has('molt') ? { event: 'discardMoltCard' } : { event: 'discardCard' };
   }
   if ((has('minion') || has('minions')) && (has('discarded') || has('discard')))
     return { event: 'discardMinion' };
@@ -208,11 +208,11 @@ function normalizeResource(word: string): string {
 // --- modifiers ---------------------------------------------------------------
 
 /**
- * `Claw.` on its own — the Crab's keyword, marking the card as one that plays
+ * `Molt.` on its own — the Crab's keyword, marking the card as one that plays
  * for free when discarded. A whole sentence so it can't be confused with a verb.
  */
-function isClawSentence(sentence: Token[]): boolean {
-  return sentence.length === 1 && sentence[0]!.type === 'word' && sentence[0]!.value.toLowerCase() === 'claw';
+function isMoltSentence(sentence: Token[]): boolean {
+  return sentence.length === 1 && sentence[0]!.type === 'word' && sentence[0]!.value.toLowerCase() === 'molt';
 }
 
 function isModifierSentence(sentence: Token[]): boolean {
@@ -456,22 +456,22 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
     }
     case 'add': {
-      // "Add claw to 2 cards in your hand." / "…to the top card of your draw pile."
+      // "Add molt to 2 cards in your hand." / "…to the top card of your draw pile."
       const last = group[group.length - 1]!;
       const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
-      if (!words.includes('claw')) {
-        diagnostics.push(diag('Only "add claw to …" is supported.', head));
+      if (!words.includes('molt')) {
+        diagnostics.push(diag('Only "add molt to …" is supported.', head));
         return null;
       }
       if (words.includes('draw')) {
-        return { kind: 'Effect', verb: 'add', noun: 'clawDrawTop', ...span(head, last) };
+        return { kind: 'Effect', verb: 'add', noun: 'moltDrawTop', ...span(head, last) };
       }
       const numberTok = group.find((t) => t.type === 'number');
       return {
         kind: 'Effect',
         verb: 'add',
         amount: numberTok ? Number(numberTok.value) : 1,
-        noun: 'clawHand',
+        noun: 'moltHand',
         ...span(head, last),
       };
     }

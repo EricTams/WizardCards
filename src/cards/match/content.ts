@@ -64,7 +64,7 @@ export const CHARACTERS: Record<'cloud' | 'wizard' | 'crab', CharacterDef> = {
   crab: {
     id: 'crab',
     name: 'The Crab',
-    blurb: 'Churns its hand — cards with Claw play for free when discarded.',
+    blurb: 'Churns its hand — cards with Molt play for free when discarded.',
     pool: CRAB_CARDS,
     theme: 'beach',
     playable: true,

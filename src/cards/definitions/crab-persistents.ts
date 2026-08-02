@@ -3,7 +3,7 @@
  *
  * Crab Trap and Exoskeleton are what today's trigger grammar can express. The
  * remaining two key off things the engine can't yet observe — how much of your
- * hand you discarded, whether a discarded card had Claw, a deck shuffle — see
+ * hand you discarded, whether a discarded card had Molt, a deck shuffle — see
  * `docs/roadmap.md`.
  */
 import { cardId } from '@shared/index';
@@ -16,7 +16,7 @@ export const CRAB_TRAP: CardDef = {
   text: 'At the start of your turn, draw 1 additional card.',
 };
 
-/** Turtle up, then cash the block in for a fresh hand (firing any Claw with it). */
+/** Turtle up, then cash the block in for a fresh hand (firing any Molt with it). */
 export const EXOSKELETON: CardDef = {
   id: cardId('crab-exoskeleton'),
   name: 'Exoskeleton',
@@ -44,14 +44,14 @@ export const PRAWN: CardDef = {
   id: cardId('crab-prawn'),
   name: 'Prawn',
   cost: 1,
-  text: 'When you discard a card with claw, deal 3 damage.',
+  text: 'When you discard a card with molt, deal 3 damage.',
 };
 
 export const DECORATOR: CardDef = {
   id: cardId('crab-decorator'),
   name: 'Decorator',
   cost: 1,
-  text: 'When you shuffle your deck, add claw to the top card of your draw pile.',
+  text: 'When you shuffle your deck, add molt to the top card of your draw pile.',
 };
 
 export const CRAB_PERSISTENTS: readonly CardDef[] = [
