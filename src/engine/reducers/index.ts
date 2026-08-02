@@ -58,6 +58,9 @@ export type GameEvent =
   /** Unplayable cards spent by Burn — the cards layer plays their effects for free. */
   | { readonly type: 'CardsBurned'; readonly owner: EntityId; readonly cards: readonly CardId[]; readonly instances: readonly CardInstance[] }
   | { readonly type: 'BraverySet'; readonly target: EntityId; readonly amount: number }
+  /** The battle paused on a card choice (discard/burn); input should collect picks. */
+  | { readonly type: 'ChoiceRequested'; readonly kind: 'discard' | 'burn'; readonly owner: EntityId; readonly count: number }
+  | { readonly type: 'ChoiceCleared' }
   | { readonly type: 'EnergySet'; readonly target: EntityId; readonly amount: number }
   // `unblocked` is the portion that got past block+shield — what triggers like
   // Rot Away ("whenever you deal unblocked damage") key off.
@@ -124,7 +127,7 @@ export function apply(state: GameState, action: Action): ApplyResult {
       };
 
     case 'DiscardCards':
-      return discardCards(state, action.owner ?? state.player.id, action.count);
+      return discardCards(state, action.owner ?? state.player.id, action.count, action.uids);
 
     case 'DiscardHand': {
       // Routed through discardCards so it counts, reasons, and triggers exactly
@@ -401,7 +404,27 @@ export function apply(state: GameState, action: Action): ApplyResult {
     }
 
     case 'BurnCards':
-      return burnCards(state, action.owner, action.count);
+      return burnCards(state, action.owner, action.count, action.uids);
+
+    case 'SetPendingChoice':
+      return {
+        state: { ...state, pending: action.pending },
+        events: [
+          {
+            type: 'ChoiceRequested',
+            kind: action.pending.kind,
+            owner: action.pending.owner,
+            count: action.pending.count,
+          },
+        ],
+      };
+
+    case 'ClearPendingChoice': {
+      if (!state.pending) return { state, events: [] };
+      const { pending, ...cleared } = state;
+      void pending;
+      return { state: cleared, events: [{ type: 'ChoiceCleared' }] };
+    }
 
     case 'FindDraw': {
       const drawn = drawCards(state, action.owner, action.count);
@@ -561,13 +584,22 @@ function drawCards(
  * raises `CardsBurned` (which plays the burned effects) rather than
  * `CardsDiscarded` (which would set off Molt).
  */
-function burnCards(state: GameState, owner: EntityId, count: number | undefined): ApplyResult {
+function burnCards(
+  state: GameState,
+  owner: EntityId,
+  count: number | undefined,
+  uids?: readonly number[],
+): ApplyResult {
   const c = findCombatant(state, owner);
   if (!c) return { state, events: [{ type: 'CardsBurned', owner, cards: [], instances: [] }] };
-  let left = count ?? c.hand.length;
+  // With `uids` (a player's pick), burn exactly those copies — still only ones
+  // actually flagged Unplayable, so a bad selection can't burn a playable card.
+  // Otherwise leftmost-first, up to `count` (all of them when count is omitted).
+  const chosen = uids ? new Set(uids) : null;
+  let left = chosen ? c.hand.length : (count ?? c.hand.length);
   const burned: CardInstance[] = [];
   const hand = c.hand.filter((inst) => {
-    if (left <= 0 || !inst.unplayable) return true;
+    if (left <= 0 || !inst.unplayable || (chosen !== null && !chosen.has(inst.uid))) return true;
     left -= 1;
     burned.push(inst);
     return false;
@@ -629,18 +661,37 @@ function dealDamageToRandomEnemy(state: GameState, self: EntityId, amount: numbe
   return dealDamage({ ...state, rng: draw.state }, target, amount);
 }
 
-function discardCards(state: GameState, owner: EntityId, count: number): ApplyResult {
+function discardCards(
+  state: GameState,
+  owner: EntityId,
+  count: number,
+  uids?: readonly number[],
+): ApplyResult {
   const c = findCombatant(state, owner);
   if (!c) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], instances: [], reason: 'discard' }] };
-  const n = Math.min(Math.max(0, count), c.hand.length);
-  if (n === 0) return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], instances: [], reason: 'discard' }] };
-  const discarded = c.hand.slice(c.hand.length - n);
+  // With `uids` (a player's pick), take exactly those copies; otherwise the
+  // rightmost `count` — the deterministic default. Unknown uids are ignored so
+  // the reducer stays total against a bad (or stale) selection.
+  let discarded: CardInstance[];
+  let hand: CardInstance[];
+  if (uids) {
+    const chosen = new Set(uids);
+    discarded = c.hand.filter((inst) => chosen.has(inst.uid));
+    hand = c.hand.filter((inst) => !chosen.has(inst.uid));
+  } else {
+    const n = Math.min(Math.max(0, count), c.hand.length);
+    discarded = c.hand.slice(c.hand.length - n);
+    hand = c.hand.slice(0, c.hand.length - n);
+  }
+  if (discarded.length === 0) {
+    return { state, events: [{ type: 'CardsDiscarded', owner, cards: [], instances: [], reason: 'discard' }] };
+  }
   return {
     state: mapCombatant(state, owner, (cc) => ({
       ...cc,
-      hand: cc.hand.slice(0, cc.hand.length - n),
+      hand,
       discardPile: [...cc.discardPile, ...discarded],
-      discardedThisTurn: cc.discardedThisTurn + n,
+      discardedThisTurn: cc.discardedThisTurn + discarded.length,
     })),
     events: [{ type: 'CardsDiscarded', owner, cards: cardIdsOf(discarded), instances: discarded, reason: 'discard' }],
   };

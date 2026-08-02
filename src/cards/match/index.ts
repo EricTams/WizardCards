@@ -129,6 +129,59 @@ export function runWithTriggers(state: GameState, actions: readonly Action[]): R
   return { state: current, events };
 }
 
+/**
+ * Would applying `action` interactively need the owner to pick cards first?
+ * Only when there's a genuine choice: a counted discard/burn without chosen
+ * `uids`, with MORE eligible cards than the count — discarding a whole hand,
+ * burning every Unplayable, or a count that covers everything eligible has
+ * exactly one outcome and auto-resolves.
+ */
+function choiceFor(state: GameState, action: Action): { kind: 'discard' | 'burn'; owner: GameState['player']['id']; count: number } | null {
+  if (action.type === 'DiscardCards' && !action.uids) {
+    const owner = action.owner ?? state.player.id;
+    const c = combatantOf(state, owner);
+    const count = Math.min(Math.max(0, action.count), c?.hand.length ?? 0);
+    if (c && count > 0 && c.hand.length > count) return { kind: 'discard', owner, count };
+  }
+  if (action.type === 'BurnCards' && !action.uids && action.count !== undefined) {
+    const c = combatantOf(state, action.owner);
+    const eligible = c ? c.hand.filter((inst) => inst.unplayable).length : 0;
+    const count = Math.min(Math.max(0, action.count), eligible);
+    if (count > 0 && eligible > count) return { kind: 'burn', owner: action.owner, count };
+  }
+  return null;
+}
+
+/**
+ * Run `actions` in order; when `interactive`, PAUSE on the first one that needs
+ * a card pick — the remaining actions are suspended in `pending.queued` (plain
+ * data, so the pause is serializable) and resume via `resolvePendingChoice`
+ * (`battle.ts`). Non-interactive callers (the AI, tests, the whole trigger
+ * cascade) never pause: a discard fired mid-cascade by a Molt free play still
+ * auto-resolves with the default selection.
+ */
+export function runOrPause(state: GameState, actions: readonly Action[], interactive: boolean): RunResult {
+  let current = state;
+  const events: GameEvent[] = [];
+  for (let i = 0; i < actions.length; i++) {
+    const action = actions[i]!;
+    if (interactive) {
+      const choice = choiceFor(current, action);
+      if (choice) {
+        const paused = applyWithTriggers(current, {
+          type: 'SetPendingChoice',
+          pending: { ...choice, queued: actions.slice(i) },
+        });
+        return { state: paused.state, events: [...events, ...paused.events] };
+      }
+    }
+    const result = applyWithTriggers(current, action);
+    current = result.state;
+    events.push(...result.events);
+  }
+  return { state: current, events };
+}
+
 /** Play a card: compile its text, bind the play context, resolve with triggers. */
 export function playCard(state: GameState, card: CardDef, ctx: PlayContext): RunResult {
   const compiled = compile(card.text);
@@ -272,7 +325,10 @@ export function startTurn(
  * (unless Fall suppresses it), then the turn ends. (Enemy turns / full turn
  * structure are Phase 2.)
  */
-export function endTurn(state: GameState, opts: { actorId?: EntityId } = {}): RunResult {
+export function endTurn(
+  state: GameState,
+  opts: { actorId?: EntityId; interactive?: boolean } = {},
+): RunResult {
   const actorId = opts.actorId ?? state.player.id;
   const isPlayer = actorId === state.player.id;
   let current = state;
@@ -288,13 +344,22 @@ export function endTurn(state: GameState, opts: { actorId?: EntityId } = {}): Ru
   const autumn = isPlayer && activePersistents(current).some((b) => b.suppressFogDiscard);
   const actor = combatantOf(current, actorId);
   const fog = actor ? actor.clouds.filter((c) => c === 'fog').length : 0;
-  if (!autumn && fog > 0) run([{ type: 'DiscardCards', owner: actorId, count: fog }]);
+
+  // The Fog penalty is a hand discard, so an interactive player picks the
+  // card(s) — the pause suspends EndTurn in the queue; refills settle when the
+  // choice resolves (`resolvePendingChoice`).
+  const tail: Action[] = [];
+  if (!autumn && fog > 0) tail.push({ type: 'DiscardCards', owner: actorId, count: fog });
+  tail.push({ type: 'EndTurn' });
+  const ran = runOrPause(current, tail, opts.interactive === true);
+  current = ran.state;
+  events.push(...ran.events);
+  if (current.pending) return { state: current, events };
 
   // End-of-turn discards (Fog, Exoskeleton) may have emptied a hand.
   const settled = settleHandRefills(current);
   current = settled.state;
   events.push(...settled.events);
 
-  run([{ type: 'EndTurn' }]);
   return { state: current, events };
 }

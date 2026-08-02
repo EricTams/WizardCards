@@ -54,6 +54,7 @@ export {
   confirmMulligan,
   playFromHand,
   canPlayAt,
+  resolvePendingChoice,
   endPlayerTurn,
   endPlayerPhase,
   beginEnemyTurn,

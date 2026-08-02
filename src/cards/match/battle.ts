@@ -28,7 +28,7 @@ import { entityId, type CardId, type EntityId } from '@shared/index';
 import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
 import type { PlayContext } from '@cards/dsl/resolver';
-import { runWithTriggers, runTurnCascade, startTurn, endTurn, settleHandRefills, type RunResult } from '@cards/match/index';
+import { runWithTriggers, runTurnCascade, runOrPause, startTurn, endTurn, settleHandRefills, type RunResult } from '@cards/match/index';
 import { BASE_ENERGY, BASE_MAX_HP, DECK_SIZE, cloudCapFor, CHARACTERS, enemyDeck, getRelic } from '@cards/match/content';
 import { burnCostOf, stampPrintedKeywords } from '@cards/match/burn';
 
@@ -205,8 +205,9 @@ export function playFromHand(
   actorId: EntityId,
   handIndex: number,
   targetId?: EntityId,
+  opts: { interactive?: boolean } = {},
 ): RunResult {
-  if (state.phase === 'won' || state.phase === 'lost') return { state, events: [] };
+  if (state.phase === 'won' || state.phase === 'lost' || state.pending) return { state, events: [] };
   const actor = combatantOf(state, actorId);
   const instance = actor?.hand[handIndex];
   const cardId = instance?.cardId;
@@ -230,7 +231,12 @@ export function playFromHand(
   const compiled = compile(card.text);
   if (compiled.ok) {
     const ctx: PlayContext = { self: actorId, target, sourceCard: cardId };
-    run(compiled.value.map((produce) => produce(ctx)));
+    // Interactively, a discard/burn with a real choice PAUSES here — the rest
+    // of the card waits in `pending.queued` for `resolvePendingChoice`.
+    const ran = runOrPause(cur, compiled.value.map((produce) => produce(ctx)), opts.interactive === true);
+    cur = ran.state;
+    events.push(...ran.events);
+    if (cur.pending) return { state: cur, events }; // refills/outcome settle on resolution
   }
   // The card has fully resolved; if it emptied a hand, "run out of cards"
   // refills now (playing your last card counts — see settleHandRefills).
@@ -239,6 +245,47 @@ export function playFromHand(
   events.push(...settled.events);
   const outcome = outcomeAction(cur);
   if (outcome) run([outcome]);
+  return { state: cur, events };
+}
+
+/**
+ * Resolve the pending card choice with the player's picked copies (`uids`),
+ * then resume the suspended resolution. The picks are validated — only cards
+ * actually in the owner's hand (and Unplayable, for a burn) count, and exactly
+ * `pending.count` are required — so a stale or forged selection is refused
+ * rather than half-applied. Resuming may pause again on the next choice.
+ */
+export function resolvePendingChoice(state: GameState, uids: readonly number[]): RunResult {
+  const pending = state.pending;
+  if (!pending) return { state, events: [] };
+  const c = combatantOf(state, pending.owner);
+  const eligible = new Set(
+    (c?.hand ?? [])
+      .filter((inst) => pending.kind === 'discard' || inst.unplayable === true)
+      .map((inst) => inst.uid),
+  );
+  const chosen = [...new Set(uids)].filter((uid) => eligible.has(uid));
+  if (chosen.length !== pending.count) return { state, events: [] };
+
+  let cur = state;
+  const events: GameEvent[] = [];
+  const run = (r: RunResult) => {
+    cur = r.state;
+    events.push(...r.events);
+  };
+
+  run(runWithTriggers(cur, [{ type: 'ClearPendingChoice' }]));
+  // queued[0] is the very action that paused; re-issue it with the picks.
+  const [head, ...rest] = pending.queued;
+  if (head && (head.type === 'DiscardCards' || head.type === 'BurnCards')) {
+    run(runWithTriggers(cur, [{ ...head, uids: chosen }]));
+  }
+  if (!finished(cur)) run(runOrPause(cur, rest, true));
+  if (cur.pending) return { state: cur, events };
+
+  run(settleHandRefills(cur));
+  const outcome = outcomeAction(cur);
+  if (outcome) run(runWithTriggers(cur, [outcome]));
   return { state: cur, events };
 }
 
@@ -346,10 +393,14 @@ export function aiPlayOne(state: GameState, actorId: EntityId): EnemyPlay | null
 // `endPlayerTurn` composes these synchronously (tests / headless); the game view
 // calls them one at a time with timers between (3s before the turn, 1s per card).
 
-/** The player's own end-of-turn (persistents, fog discard); leaves `enemyTurn`. */
-export function endPlayerPhase(state: GameState): RunResult {
-  if (finished(state)) return { state, events: [] };
-  return settleAfter(endTurn(state));
+/**
+ * The player's own end-of-turn (persistents, fog discard); leaves `enemyTurn`.
+ * Interactively, a Fog discard with a real choice pauses here (`state.pending`)
+ * — the caller waits for `resolvePendingChoice`, which runs the queued EndTurn.
+ */
+export function endPlayerPhase(state: GameState, opts: { interactive?: boolean } = {}): RunResult {
+  if (finished(state) || state.pending) return { state, events: [] };
+  return settleAfter(endTurn(state, opts));
 }
 
 /**

@@ -12,7 +12,7 @@
  * initialState(seed) and you reproduce any state exactly.
  */
 import type { CardId, CloudType, EntityId, ScaleMetric } from '@shared/index';
-import type { Phase } from '@engine/state/index';
+import type { PendingChoice, Phase } from '@engine/state/index';
 
 export interface StartTurn {
   readonly type: 'StartTurn';
@@ -43,12 +43,18 @@ export interface ClearTurnCounters {
   readonly target: EntityId;
 }
 
-/** Move `count` cards from the end of `owner`'s hand to their discard pile. */
+/**
+ * Discard cards from `owner`'s hand. With `uids`, exactly those chosen copies
+ * (a player's pick — see PendingChoice); without, the last `count` cards in
+ * hand — the deterministic default the AI and non-interactive play use.
+ */
 export interface DiscardCards {
   readonly type: 'DiscardCards';
   /** Whose hand to discard from. Defaults to the player when omitted. */
   readonly owner?: EntityId;
   readonly count: number;
+  /** The chosen copies. Overrides the rightmost-`count` default. */
+  readonly uids?: readonly number[];
 }
 
 /**
@@ -305,14 +311,34 @@ export interface AddUnplayableToHand {
 
 /**
  * Burn — the Writer's mechanic: move Unplayable cards from `owner`'s hand to the
- * discard pile, leftmost first. Emits `CardsBurned`; the cards layer then plays
- * each burned card's effects for free (see `src/cards/match/burn.ts`). Omitting
- * `count` burns every Unplayable card in hand (Inspiration).
+ * discard pile. Emits `CardsBurned`; the cards layer then plays each burned
+ * card's effects for free (see `src/cards/match/burn.ts`). With `uids`, exactly
+ * those chosen copies (a player's pick — non-Unplayable uids are ignored);
+ * without, leftmost first. Omitting `count` burns every Unplayable card in hand
+ * (Inspiration).
  */
 export interface BurnCards {
   readonly type: 'BurnCards';
   readonly owner: EntityId;
   readonly count?: number;
+  /** The chosen copies. Overrides the leftmost-`count` default. */
+  readonly uids?: readonly number[];
+}
+
+/**
+ * Pause the battle on a card choice ("choose 2 cards to discard"). Raised by
+ * the cards layer mid-resolution for a human player; the suspended remainder
+ * rides along in `pending.queued` and resumes when the choice resolves
+ * (`resolvePendingChoice` in the cards layer, which also clears it).
+ */
+export interface SetPendingChoice {
+  readonly type: 'SetPendingChoice';
+  readonly pending: PendingChoice;
+}
+
+/** Lift the pause once its choice has been made. */
+export interface ClearPendingChoice {
+  readonly type: 'ClearPendingChoice';
 }
 
 /**
@@ -491,6 +517,8 @@ export type Action =
   | FindDraw
   | IfFoundUnplayable
   | SetBravery
-  | DealDamageToAll;
+  | DealDamageToAll
+  | SetPendingChoice
+  | ClearPendingChoice;
 
 export type ActionType = Action['type'];

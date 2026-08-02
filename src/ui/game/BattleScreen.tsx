@@ -5,6 +5,7 @@ import {
   randomMatchup,
   playFromHand,
   canPlayAt,
+  resolvePendingChoice,
   endPlayerPhase,
   beginEnemyTurn,
   enemyPlayOne,
@@ -19,7 +20,7 @@ import {
   ENEMY_ID,
   type BattleOptions,
 } from '@cards/index';
-import { cardIdsOf, type Combatant, type GameEvent, type GameState, type MinionState } from '@engine/index';
+import { cardIdsOf, type Combatant, type GameEvent, type GameState, type MinionState, type PendingChoice } from '@engine/index';
 import type { CardId, CloudType, EntityId } from '@shared/index';
 import { Sprite } from '@ui/game/Sprite';
 import { heroSprite, cloudSprite, cardArtUrl, CARD_ART_W, CARD_ART_H, SPRITE_CSS, CARD_POINTER } from '@ui/game/art';
@@ -120,6 +121,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   const [pops, setPops] = useState<Pop[]>([]);
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [targeting, setTargeting] = useState<number | null>(null); // hand index awaiting a target pick
+  const [choicePicks, setChoicePicks] = useState<number[]>([]); // hand indices picked for a pending discard/burn
   const fxId = useRef(0);
   const animating = staged !== null;
 
@@ -292,10 +294,13 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   const enemy = state.enemies[0];
   const isPlayerTurn = !auto && state.phase === 'playerTurn' && !enemyActing && !animating;
   const decided = state.phase === 'won' || state.phase === 'lost';
+  // A pending card choice ("choose 2 cards to discard/burn"): hand clicks pick
+  // cards instead of playing, and everything else waits for the resolution.
+  const pending = auto ? undefined : state.pending;
   // Over the cloud cap: the player must replace clouds (one at a time) before
   // doing anything else.
   const cloudCap = cloudCapFor(player);
-  const overCap = isPlayerTurn && targeting === null && player.clouds.length > cloudCap;
+  const overCap = isPlayerTurn && targeting === null && !pending && player.clouds.length > cloudCap;
 
   function removeCloudAt(index: number) {
     const r = applyWithTriggers(state, { type: 'RemoveCloudAt', target: PLAYER_ID, index });
@@ -320,7 +325,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     logTurn(r.state, `— ${r.state.player.name}'s turn —`, r.events, 'player');
   }
   function playCardAt(index: number) {
-    if (!isPlayerTurn || overCap || !enemy) return;
+    if (!isPlayerTurn || overCap || !enemy || pending) return;
     const cardId = player.hand[index]!.cardId;
     const card = getCard(cardId);
     if (!card || !canPlayAt(player, index)) {
@@ -347,11 +352,57 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     const cardId = player.hand[index]!.cardId;
     const card = getCard(cardId);
     if (!card) return;
-    const r = playFromHand(state, PLAYER_ID, index, targetId);
+    const r = playFromHand(state, PLAYER_ID, index, targetId, { interactive: true });
     setTargeting(null);
     setPlayingIndex(index); // hide the played card in hand while it's staged
     setLog(`You play ${card.name}.`);
     await animateAndApply(PLAYER_ID, cardId, r.events, r.state, () => setPlayingIndex(null));
+    // The card may have paused mid-resolution on a discard/burn choice.
+    if (r.state.pending) setLog(choicePrompt(r.state.pending));
+  }
+
+  /** "Choose 2 cards to discard." — the banner/log line for a pending choice. */
+  function choicePrompt(p: PendingChoice): string {
+    return `Choose ${p.count} card${p.count > 1 ? 's' : ''} to ${p.kind === 'burn' ? 'burn' : 'discard'}.`;
+  }
+
+  /** A hand click while a choice is pending: toggle the pick; the last one resolves. */
+  function toggleChoice(index: number) {
+    if (!pending || animating) return;
+    const inst = player.hand[index];
+    if (!inst) return;
+    if (pending.kind === 'burn' && inst.unplayable !== true) {
+      setLog('Only an Unplayable card can be burned.');
+      return;
+    }
+    if (choicePicks.includes(index)) {
+      setChoicePicks(choicePicks.filter((i) => i !== index));
+      return;
+    }
+    const next = [...choicePicks, index];
+    if (next.length < pending.count) {
+      setChoicePicks(next);
+      return;
+    }
+    finishChoice(next);
+  }
+
+  function finishChoice(picks: readonly number[]) {
+    if (!pending) return;
+    const kind = pending.kind;
+    const r = resolvePendingChoice(state, picks.map((i) => player.hand[i]!.uid));
+    setChoicePicks([]);
+    setState(r.state);
+    logTurnIfAny(r.state, `You ${kind} ${picks.length} card${picks.length > 1 ? 's' : ''}`, r.events, 'player');
+    if (r.state.pending) {
+      setLog(choicePrompt(r.state.pending)); // the resumed card asked again
+    } else if (r.state.phase === 'won' || r.state.phase === 'lost') {
+      setLog('Battle over.');
+    } else if (r.state.phase === 'enemyTurn') {
+      void runEnemyTurn(r.state); // the choice was the end-of-turn Fog discard
+    } else {
+      setLog('Your move.');
+    }
   }
   /**
    * End the player's turn, then run the enemy's turn at a watchable pace: 3s
@@ -359,22 +410,31 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
    * legal play left. Each step advances the same battle driver the tests use.
    */
   async function doEndTurn() {
-    if (!isPlayerTurn) return;
-    const ename = enemy?.name ?? 'The enemy';
-    const ended = endPlayerPhase(state);
+    if (!isPlayerTurn || pending) return;
+    const ended = endPlayerPhase(state, { interactive: true });
     setState(ended.state);
     logTurnIfAny(ended.state, `${ended.state.player.name} ends turn`, ended.events, 'player');
+    if (ended.state.pending) {
+      // The Fog discard wants a pick; the enemy turn starts once it resolves.
+      setLog(choicePrompt(ended.state.pending));
+      return;
+    }
     if (ended.state.phase === 'won' || ended.state.phase === 'lost') {
       setLog('Battle over.');
       return;
     }
+    await runEnemyTurn(ended.state);
+  }
 
+  /** The enemy's whole turn at a watchable pace, then back to the player. */
+  async function runEnemyTurn(from: GameState) {
+    const ename = from.enemies[0]?.name ?? 'The enemy';
     setEnemyActing(true);
     setLog(`${ename} is thinking…`);
     await delay(TURN_START_DELAY_MS);
     if (!mounted.current) return;
 
-    const begin = beginEnemyTurn(ended.state);
+    const begin = beginEnemyTurn(from);
     let cur = begin.state;
     setState(cur);
     setLog(`${ename}'s turn.`);
@@ -501,12 +561,16 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
       <Hand
         hand={cardIdsOf(player.hand)}
         energy={player.energy}
-        playable={player.hand.map((_, i) => canPlayAt(player, i))}
+        playable={player.hand.map((inst, i) =>
+          // While choosing, "playable" means "pickable": any card for a
+          // discard, only Unplayable ones for a burn.
+          pending ? pending.kind === 'discard' || inst.unplayable === true : canPlayAt(player, i),
+        )}
         phase={state.phase}
-        mullPicks={mullPicks}
+        mullPicks={pending ? choicePicks : mullPicks}
         locked={auto || animating}
         hideIndex={playingIndex}
-        onCard={(i) => (auto ? undefined : state.phase === 'mulligan' ? toggleMull(i) : playCardAt(i))}
+        onCard={(i) => (auto ? undefined : state.phase === 'mulligan' ? toggleMull(i) : pending ? toggleChoice(i) : playCardAt(i))}
         onHoverCard={hoverCard}
         onLeaveCard={hideTip}
       />
@@ -521,12 +585,29 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
             </button>
           </>
         )}
-        {isPlayerTurn && !overCap && targeting === null && (
+        {isPlayerTurn && !overCap && targeting === null && !pending && (
           <button onClick={doEndTurn} style={bigBtn(true)}>
             End turn ▶
           </button>
         )}
       </div>
+
+      {/* Card-choice prompt: pick which card(s) to discard or burn */}
+      {pending && !animating && (
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            bottom: 300,
+            zIndex: 9,
+          }}
+        >
+          <span style={{ ...pill, background: 'rgba(0,0,0,.72)', fontSize: 15 }}>
+            {pending.kind === 'burn' ? '🔥' : '🗑'} {choicePrompt(pending)} ({choicePicks.length}/{pending.count})
+          </span>
+        </div>
+      )}
 
       {/* Play animations: staged card, projectiles, floating numbers */}
       <EffectsLayer staged={staged} flyers={flyers} pops={pops} />

@@ -5,7 +5,7 @@
  * here. Keeping a single entry point makes the pure core's contract explicit and
  * easy to keep stable. The engine imports only from `shared`.
  */
-export type { GameState, Combatant, CardInstance, MinionState, Phase, NewGameOptions } from '@engine/state/index';
+export type { GameState, Combatant, CardInstance, MinionState, PendingChoice, Phase, NewGameOptions } from '@engine/state/index';
 export { initialState, makeCombatant, cardIdsOf, instancesOf } from '@engine/state/index';
 
 export type { Action, ActionType } from '@engine/actions/index';

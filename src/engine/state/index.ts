@@ -13,6 +13,7 @@
  * `docs/roadmap.md`).
  */
 import type { CardId, CharacterId, CloudType, EntityId } from '@shared/index';
+import type { Action } from '@engine/actions/index';
 import { seedRng, type RngState } from '@engine/rng/index';
 
 /**
@@ -179,6 +180,23 @@ export function makeCombatant(
   };
 }
 
+/**
+ * A card choice the battle is waiting on: "choose `count` cards to discard"
+ * (Quicksand, the Fog penalty) or "…to burn" (the Writer). While set, the
+ * resolution that raised it is suspended — `queued` holds the not-yet-applied
+ * remainder of that resolution as plain actions, so the pause itself survives
+ * serialization and replay. The cards layer raises it (`SetPendingChoice`) only
+ * for a human player with a real choice to make; the AI always auto-resolves.
+ */
+export interface PendingChoice {
+  readonly kind: 'discard' | 'burn';
+  readonly owner: EntityId;
+  /** How many cards must be picked. */
+  readonly count: number;
+  /** The suspended remainder of the interrupted resolution. */
+  readonly queued: readonly Action[];
+}
+
 export interface GameState {
   /** Format/schema version — lets us migrate saved games and netcode payloads. */
   readonly version: 1;
@@ -192,6 +210,8 @@ export interface GameState {
   readonly player: Combatant;
   /** The opponents. Each carries its own piles too, so they play like the player. */
   readonly enemies: readonly Combatant[];
+  /** A card choice the battle is paused on, if any (see PendingChoice). */
+  readonly pending?: PendingChoice;
 }
 
 /** The card ids in a pile, in order — for callers that don't care about copies. */
