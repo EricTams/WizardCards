@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { cardIdsOf } from '@engine/index';
+import { cardIdsOf, type MinionState } from '@engine/index';
 import {
   buildTestState, playFromHand, resolvePendingChoice, endTurn, TEST_SELF,
 } from '@cards/index';
-import { QUICKSAND, PINCH, DOUBLE_DRAW, BOIL, LITTLE_SPLASH } from '@cards/definitions/crab';
+import { QUICKSAND, PINCH, DOUBLE_DRAW, BOIL, LITTLE_SPLASH, DRY_OUT } from '@cards/definitions/crab';
 import { DUMPSTER_DIVER, NOTES, SCRIBBLE, DISPOSE } from '@cards/definitions/writer';
-import type { CardId } from '@shared/index';
+import { CLEANSE, SUN_RAY } from '@cards/definitions/cloud';
+import { STATIC } from '@cards/definitions/cloud-persistents';
+import { THROW, ALCHEMY, BATTERY } from '@cards/definitions/wizard';
+import { entityId, type CardId } from '@shared/index';
 
 const enemyHp = (s: ReturnType<typeof buildTestState>) => s.enemies[0]!.hp;
 const uidOf = (s: ReturnType<typeof buildTestState>, cardId: CardId) =>
@@ -139,6 +142,106 @@ describe('interactive burns — the player picks the Unplayable cards', () => {
     const paused = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true }).state;
     const splash = paused.player.hand.find((c) => c.cardId === LITTLE_SPLASH.id)!.uid;
     expect(resolvePendingChoice(paused, [splash]).state).toBe(paused);
+  });
+});
+
+describe('interactive cloud removal — "X clouds, your choice"', () => {
+  it('pauses with picks by slot, and removes exactly the chosen clouds', () => {
+    // Cleanse: "Heal 3. Remove 2 clouds." with three different clouds up.
+    const state = buildTestState({
+      player: { energy: 5, hp: 40, maxHp: 50, hand: [CLEANSE.id], clouds: ['storm', 'fog', 'snow'] },
+    });
+    const paused = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true }).state;
+    expect(paused.pending).toMatchObject({ kind: 'cloud', count: 2 });
+    expect(paused.player.hp).toBe(43); // the heal already resolved
+    const { state: after } = resolvePendingChoice(paused, [0, 2]); // storm + snow
+    expect(after.pending).toBeUndefined();
+    expect(after.player.clouds).toEqual(['fog']);
+  });
+
+  it('a chosen Lightning cloud still sets off Static', () => {
+    const state = buildTestState({
+      player: { energy: 5, persistents: [STATIC.id], hand: [SUN_RAY.id], clouds: ['lightning', 'fog'] },
+      target: { hp: 30, maxHp: 30 },
+    });
+    const paused = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true }).state;
+    expect(paused.pending).toMatchObject({ kind: 'cloud', count: 1 });
+    const { state: after } = resolvePendingChoice(paused, [0]); // the lightning one
+    expect(after.player.clouds).toEqual(['fog']);
+    expect(after.enemies[0]!.hp).toBe(30 - 3 - 2); // Sun Ray's 3 + Static's 2
+  });
+
+  it('auto-resolves when the count covers every cloud', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [CLEANSE.id], clouds: ['storm', 'fog'] },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true });
+    expect(after.pending).toBeUndefined();
+    expect(after.player.clouds).toHaveLength(0);
+  });
+
+  it('an out-of-range slot is refused', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [SUN_RAY.id], clouds: ['storm', 'fog'] },
+      target: { hp: 30, maxHp: 30 },
+    });
+    const paused = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true }).state;
+    expect(resolvePendingChoice(paused, [5]).state).toBe(paused);
+  });
+});
+
+describe('interactive minion discards', () => {
+  const minion = (cardId: CardId, n: number): MinionState => ({ id: entityId(`m-${n}`), cardId });
+
+  it('pauses and discards exactly the chosen minion', () => {
+    // Throw: "Deal 8 damage. Discard 1 minion." with two different minions out.
+    const state = buildTestState({
+      player: { energy: 5, hand: [THROW.id], minions: [minion(ALCHEMY.id, 1), minion(BATTERY.id, 2)] },
+      target: { hp: 30, maxHp: 30 },
+    });
+    const paused = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true }).state;
+    expect(paused.pending).toMatchObject({ kind: 'minion', count: 1 });
+    expect(paused.enemies[0]!.hp).toBe(22); // the damage already resolved
+    const { state: after } = resolvePendingChoice(paused, [0]); // the Alchemy one
+    expect(after.player.minions.map((m) => m.cardId)).toEqual([BATTERY.id]);
+    expect(after.player.minionsDiscarded).toBe(1);
+  });
+
+  it('auto-resolves with a single minion out', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [THROW.id], minions: [minion(ALCHEMY.id, 1)] },
+      target: { hp: 30, maxHp: 30 },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true });
+    expect(after.pending).toBeUndefined();
+    expect(after.player.minions).toHaveLength(0);
+  });
+});
+
+describe('interactive discard-pile recovery (Dry Out)', () => {
+  it('pauses over the discard pile — including the just-played card — and moves the pick', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [DRY_OUT.id, 'x'] as CardId[], discardPile: ['a', 'b'] as CardId[] },
+    });
+    const paused = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true }).state;
+    // Dry Out itself reached the discard before its effects, so 3 candidates.
+    expect(paused.pending).toMatchObject({ kind: 'recover', count: 1 });
+    expect(paused.player.discardPile).toHaveLength(3);
+    expect(paused.player.shield).toBe(4); // the shields already resolved
+    const a = paused.player.discardPile.find((c) => (c.cardId as string) === 'a')!.uid;
+    const { state: after } = resolvePendingChoice(paused, [a]);
+    expect(cardIdsOf(after.player.drawPile)).toEqual(['a']);
+    expect(after.player.discardPile).toHaveLength(2);
+  });
+
+  it('non-interactively takes the most recent, as before', () => {
+    const state = buildTestState({
+      player: { energy: 5, hand: [DRY_OUT.id, 'x'] as CardId[], discardPile: ['a', 'b'] as CardId[] },
+    });
+    const { state: after } = playFromHand(state, TEST_SELF, 0);
+    expect(after.pending).toBeUndefined();
+    // The most recent discard is Dry Out itself (it moved there when played).
+    expect(cardIdsOf(after.player.drawPile)).toEqual([DRY_OUT.id]);
   });
 });
 

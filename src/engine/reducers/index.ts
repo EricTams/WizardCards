@@ -13,7 +13,7 @@
  */
 import type { CardId, CloudType, EntityId, ScaleMetric } from '@shared/index';
 import { entityId } from '@shared/index';
-import type { CardInstance, Combatant, GameState, MinionState, Phase } from '@engine/state/index';
+import type { CardInstance, Combatant, GameState, MinionState, PendingChoice, Phase } from '@engine/state/index';
 import { cardIdsOf } from '@engine/state/index';
 import type { Action } from '@engine/actions/index';
 import { nextInt, shuffle } from '@engine/rng/index';
@@ -58,8 +58,8 @@ export type GameEvent =
   /** Unplayable cards spent by Burn — the cards layer plays their effects for free. */
   | { readonly type: 'CardsBurned'; readonly owner: EntityId; readonly cards: readonly CardId[]; readonly instances: readonly CardInstance[] }
   | { readonly type: 'BraverySet'; readonly target: EntityId; readonly amount: number }
-  /** The battle paused on a card choice (discard/burn); input should collect picks. */
-  | { readonly type: 'ChoiceRequested'; readonly kind: 'discard' | 'burn'; readonly owner: EntityId; readonly count: number }
+  /** The battle paused on a choice (discard/burn/cloud/minion/recover); input should collect picks. */
+  | { readonly type: 'ChoiceRequested'; readonly kind: PendingChoice['kind']; readonly owner: EntityId; readonly count: number }
   | { readonly type: 'ChoiceCleared' }
   | { readonly type: 'EnergySet'; readonly target: EntityId; readonly amount: number }
   // `unblocked` is the portion that got past block+shield — what triggers like
@@ -209,7 +209,7 @@ export function apply(state: GameState, action: Action): ApplyResult {
       return createClouds(state, action.target, action.cloudType, action.count);
 
     case 'RemoveClouds':
-      return removeClouds(state, action.target, action.count);
+      return removeClouds(state, action.target, action.count, action.indices);
 
     case 'GainScaled': {
       const amount = action.multiplier * metricValue(state, action.self, action.per);
@@ -258,17 +258,24 @@ export function apply(state: GameState, action: Action): ApplyResult {
     case 'MoveDiscardToDrawPile': {
       const c = findCombatant(state, action.owner);
       if (!c) return { state, events: [] };
-      const n = Math.min(Math.max(0, action.count), c.discardPile.length);
-      if (n === 0) return { state, events: [] };
-      const moved = c.discardPile.slice(c.discardPile.length - n);
+      // With `uids` (a player's pick), take exactly those copies; otherwise the
+      // most recently discarded `count`. Unknown uids are ignored.
+      let moved: readonly CardInstance[];
+      let discardPile: readonly CardInstance[];
+      if (action.uids) {
+        const chosen = new Set(action.uids);
+        moved = c.discardPile.filter((inst) => chosen.has(inst.uid));
+        discardPile = c.discardPile.filter((inst) => !chosen.has(inst.uid));
+      } else {
+        const n = Math.min(Math.max(0, action.count), c.discardPile.length);
+        moved = c.discardPile.slice(c.discardPile.length - n);
+        discardPile = c.discardPile.slice(0, c.discardPile.length - n);
+      }
+      if (moved.length === 0) return { state, events: [] };
       const sh = shuffle([...c.drawPile, ...moved], state.rng);
       return {
         state: {
-          ...mapCombatant(state, action.owner, (cc) => ({
-            ...cc,
-            discardPile: cc.discardPile.slice(0, cc.discardPile.length - n),
-            drawPile: sh.value,
-          })),
+          ...mapCombatant(state, action.owner, (cc) => ({ ...cc, discardPile, drawPile: sh.value })),
           rng: sh.state,
         },
         events: [{ type: 'CardsRecovered', owner: action.owner, cards: cardIdsOf(moved) }],
@@ -380,7 +387,7 @@ export function apply(state: GameState, action: Action): ApplyResult {
       return summonMinion(state, action.owner, action.cardId);
 
     case 'DiscardMinion':
-      return discardMinion(state, action.owner, action.count);
+      return discardMinion(state, action.owner, action.count, action.indices);
 
     case 'AddUnplayableToHand': {
       // Leftmost unmarked copies, like AddMoltToHand — but because printed
@@ -843,12 +850,29 @@ function removeRandomClouds(state: GameState, target: EntityId, count: number): 
   return { state: { ...next, rng }, events: [{ type: 'CloudsRemoved', target, count: removed.length, removed }] };
 }
 
-function removeClouds(state: GameState, target: EntityId, count: number): ApplyResult {
+function removeClouds(
+  state: GameState,
+  target: EntityId,
+  count: number,
+  indices?: readonly number[],
+): ApplyResult {
   const current = findCombatant(state, target);
-  const keep = current ? Math.max(0, current.clouds.length - count) : 0;
-  const removed = current ? current.clouds.slice(keep) : [];
+  if (!current) return { state, events: [{ type: 'CloudsRemoved', target, count: 0, removed: [] }] };
+  // With `indices` (a player's pick — "X clouds, your choice"), remove exactly
+  // those slots; otherwise the newest `count`. Out-of-range indices are ignored.
+  let removed: CloudType[];
+  let clouds: CloudType[];
+  if (indices) {
+    const chosen = new Set(indices);
+    removed = current.clouds.filter((_, i) => chosen.has(i));
+    clouds = current.clouds.filter((_, i) => !chosen.has(i));
+  } else {
+    const keep = Math.max(0, current.clouds.length - count);
+    removed = current.clouds.slice(keep);
+    clouds = current.clouds.slice(0, keep);
+  }
   return {
-    state: mapCombatant(state, target, (c) => ({ ...c, clouds: c.clouds.slice(0, keep) })),
+    state: mapCombatant(state, target, (c) => ({ ...c, clouds })),
     events: [{ type: 'CloudsRemoved', target, count: removed.length, removed }],
   };
 }
@@ -907,13 +931,30 @@ function summonMinion(state: GameState, owner: EntityId, cardId: CardId): ApplyR
   };
 }
 
-function discardMinion(state: GameState, owner: EntityId, count: number): ApplyResult {
+function discardMinion(
+  state: GameState,
+  owner: EntityId,
+  count: number,
+  indices?: readonly number[],
+): ApplyResult {
   const current = findCombatant(state, owner);
-  const removed = current ? Math.min(current.minions.length, Math.max(0, count)) : 0;
+  if (!current) return { state, events: [{ type: 'MinionDiscarded', owner, count: 0 }] };
+  // With `indices` (a player's pick), discard exactly those minions; otherwise
+  // the most recently summoned `count`. Out-of-range indices are ignored.
+  let minions: readonly MinionState[];
+  let removed: number;
+  if (indices) {
+    const chosen = new Set(indices);
+    minions = current.minions.filter((_, i) => !chosen.has(i));
+    removed = current.minions.length - minions.length;
+  } else {
+    removed = Math.min(current.minions.length, Math.max(0, count));
+    minions = current.minions.slice(0, current.minions.length - removed);
+  }
   return {
     state: mapCombatant(state, owner, (c) => ({
       ...c,
-      minions: c.minions.slice(0, Math.max(0, c.minions.length - count)),
+      minions,
       minionsDiscarded: c.minionsDiscarded + removed,
     })),
     events: [{ type: 'MinionDiscarded', owner, count: removed }],

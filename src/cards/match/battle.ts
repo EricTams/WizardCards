@@ -248,23 +248,37 @@ export function playFromHand(
   return { state: cur, events };
 }
 
+/** What a pick may point at, per choice kind: card uids or plain indices. */
+function eligiblePicks(state: GameState, pending: NonNullable<GameState['pending']>): Set<number> {
+  const c = combatantOf(state, pending.owner);
+  if (!c) return new Set();
+  switch (pending.kind) {
+    case 'discard':
+      return new Set(c.hand.map((inst) => inst.uid));
+    case 'burn':
+      return new Set(c.hand.filter((inst) => inst.unplayable === true).map((inst) => inst.uid));
+    case 'cloud':
+      return new Set(c.clouds.map((_, i) => i));
+    case 'minion':
+      return new Set(c.minions.map((_, i) => i));
+    case 'recover':
+      return new Set(c.discardPile.map((inst) => inst.uid));
+  }
+}
+
 /**
- * Resolve the pending card choice with the player's picked copies (`uids`),
- * then resume the suspended resolution. The picks are validated — only cards
- * actually in the owner's hand (and Unplayable, for a burn) count, and exactly
- * `pending.count` are required — so a stale or forged selection is refused
- * rather than half-applied. Resuming may pause again on the next choice.
+ * Resolve the pending choice with the player's picks — card `uid`s for
+ * hand/discard-pile kinds, indices for clouds/minions (see PendingChoice) —
+ * then resume the suspended resolution. The picks are validated against the
+ * eligible set and must number exactly `pending.count`, so a stale or forged
+ * selection is refused rather than half-applied. Resuming may pause again on
+ * the next choice.
  */
-export function resolvePendingChoice(state: GameState, uids: readonly number[]): RunResult {
+export function resolvePendingChoice(state: GameState, picks: readonly number[]): RunResult {
   const pending = state.pending;
   if (!pending) return { state, events: [] };
-  const c = combatantOf(state, pending.owner);
-  const eligible = new Set(
-    (c?.hand ?? [])
-      .filter((inst) => pending.kind === 'discard' || inst.unplayable === true)
-      .map((inst) => inst.uid),
-  );
-  const chosen = [...new Set(uids)].filter((uid) => eligible.has(uid));
+  const eligible = eligiblePicks(state, pending);
+  const chosen = [...new Set(picks)].filter((pick) => eligible.has(pick));
   if (chosen.length !== pending.count) return { state, events: [] };
 
   let cur = state;
@@ -275,10 +289,15 @@ export function resolvePendingChoice(state: GameState, uids: readonly number[]):
   };
 
   run(runWithTriggers(cur, [{ type: 'ClearPendingChoice' }]));
-  // queued[0] is the very action that paused; re-issue it with the picks.
+  // queued[0] is the very action that paused; re-issue it carrying the picks
+  // (each selecting action names its selector field).
   const [head, ...rest] = pending.queued;
-  if (head && (head.type === 'DiscardCards' || head.type === 'BurnCards')) {
-    run(runWithTriggers(cur, [{ ...head, uids: chosen }]));
+  if (head) {
+    if (head.type === 'DiscardCards' || head.type === 'BurnCards' || head.type === 'MoveDiscardToDrawPile') {
+      run(runWithTriggers(cur, [{ ...head, uids: chosen }]));
+    } else if (head.type === 'RemoveClouds' || head.type === 'DiscardMinion') {
+      run(runWithTriggers(cur, [{ ...head, indices: chosen }]));
+    }
   }
   if (!finished(cur)) run(runOrPause(cur, rest, true));
   if (cur.pending) return { state: cur, events };

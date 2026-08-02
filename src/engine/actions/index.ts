@@ -185,11 +185,17 @@ export interface CreateClouds {
   readonly count: number;
 }
 
-/** Remove up to `count` clouds (most-recently-created first for now). */
+/**
+ * Remove up to `count` clouds. With `indices`, exactly those slots (a player's
+ * pick — the design's "X clouds, your choice"); without, most-recently-created
+ * first — the deterministic default.
+ */
 export interface RemoveClouds {
   readonly type: 'RemoveClouds';
   readonly target: EntityId;
   readonly count: number;
+  /** The chosen cloud slots. Overrides the newest-first default. */
+  readonly indices?: readonly number[];
 }
 
 /**
@@ -274,11 +280,17 @@ export interface DiscardFromDrawPile {
   readonly count: number;
 }
 
-/** Move `count` cards from the discard pile back into the draw pile (Dry Out). */
+/**
+ * Move `count` cards from the discard pile back into the draw pile (Dry Out).
+ * With `uids`, exactly those copies (a player's pick); without, the most
+ * recently discarded.
+ */
 export interface MoveDiscardToDrawPile {
   readonly type: 'MoveDiscardToDrawPile';
   readonly owner: EntityId;
   readonly count: number;
+  /** The chosen discard-pile copies. Overrides the most-recent default. */
+  readonly uids?: readonly number[];
 }
 
 /**
@@ -456,11 +468,16 @@ export interface SummonMinion {
   readonly cardId: CardId;
 }
 
-/** Discard up to `count` of the owner's minions (most-recently-summoned first). */
+/**
+ * Discard up to `count` of the owner's minions. With `indices`, exactly those
+ * (a player's pick); without, most-recently-summoned first.
+ */
 export interface DiscardMinion {
   readonly type: 'DiscardMinion';
   readonly owner: EntityId;
   readonly count: number;
+  /** The chosen minions, by board position. Overrides the newest-first default. */
+  readonly indices?: readonly number[];
 }
 
 /** The discriminated union of every atomic action the engine understands. */

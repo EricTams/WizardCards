@@ -21,6 +21,7 @@ import {
   type GameEvent,
   type GameState,
   type MinionState,
+  type PendingChoice,
 } from '@engine/index';
 import type { EntityId } from '@shared/index';
 import type { PlayContext } from '@cards/dsl/resolver';
@@ -130,26 +131,53 @@ export function runWithTriggers(state: GameState, actions: readonly Action[]): R
 }
 
 /**
- * Would applying `action` interactively need the owner to pick cards first?
- * Only when there's a genuine choice: a counted discard/burn without chosen
- * `uids`, with MORE eligible cards than the count — discarding a whole hand,
- * burning every Unplayable, or a count that covers everything eligible has
- * exactly one outcome and auto-resolves.
+ * Would applying `action` interactively need the owner to pick first? Only
+ * when there's a genuine choice: a counted selection without chosen
+ * `uids`/`indices`, with MORE eligible things than the count — a whole-pool
+ * effect (discard your hand, remove all clouds, burn every Unplayable) or a
+ * count that covers everything eligible has exactly one outcome and
+ * auto-resolves. One entry per selecting action; the random/'all' variants
+ * (RemoveRandomClouds, DiscardAllMinions, …) are separate types and never ask.
  */
-function choiceFor(state: GameState, action: Action): { kind: 'discard' | 'burn'; owner: GameState['player']['id']; count: number } | null {
-  if (action.type === 'DiscardCards' && !action.uids) {
-    const owner = action.owner ?? state.player.id;
-    const c = combatantOf(state, owner);
-    const count = Math.min(Math.max(0, action.count), c?.hand.length ?? 0);
-    if (c && count > 0 && c.hand.length > count) return { kind: 'discard', owner, count };
+function choiceFor(
+  state: GameState,
+  action: Action,
+): Pick<PendingChoice, 'kind' | 'owner' | 'count'> | null {
+  const pick = (
+    kind: PendingChoice['kind'],
+    owner: GameState['player']['id'],
+    count: number,
+    eligible: number,
+  ): Pick<PendingChoice, 'kind' | 'owner' | 'count'> | null => {
+    const n = Math.min(Math.max(0, count), eligible);
+    return n > 0 && eligible > n ? { kind, owner, count: n } : null;
+  };
+  switch (action.type) {
+    case 'DiscardCards': {
+      if (action.uids) return null;
+      const owner = action.owner ?? state.player.id;
+      return pick('discard', owner, action.count, combatantOf(state, owner)?.hand.length ?? 0);
+    }
+    case 'BurnCards': {
+      if (action.uids || action.count === undefined) return null;
+      const c = combatantOf(state, action.owner);
+      return pick('burn', action.owner, action.count, c?.hand.filter((i) => i.unplayable).length ?? 0);
+    }
+    case 'RemoveClouds': {
+      if (action.indices) return null;
+      return pick('cloud', action.target, action.count, combatantOf(state, action.target)?.clouds.length ?? 0);
+    }
+    case 'DiscardMinion': {
+      if (action.indices) return null;
+      return pick('minion', action.owner, action.count, combatantOf(state, action.owner)?.minions.length ?? 0);
+    }
+    case 'MoveDiscardToDrawPile': {
+      if (action.uids) return null;
+      return pick('recover', action.owner, action.count, combatantOf(state, action.owner)?.discardPile.length ?? 0);
+    }
+    default:
+      return null;
   }
-  if (action.type === 'BurnCards' && !action.uids && action.count !== undefined) {
-    const c = combatantOf(state, action.owner);
-    const eligible = c ? c.hand.filter((inst) => inst.unplayable).length : 0;
-    const count = Math.min(Math.max(0, action.count), eligible);
-    if (count > 0 && eligible > count) return { kind: 'burn', owner: action.owner, count };
-  }
-  return null;
 }
 
 /**

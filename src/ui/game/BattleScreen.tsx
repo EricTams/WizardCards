@@ -363,12 +363,26 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
 
   /** "Choose 2 cards to discard." — the banner/log line for a pending choice. */
   function choicePrompt(p: PendingChoice): string {
-    return `Choose ${p.count} card${p.count > 1 ? 's' : ''} to ${p.kind === 'burn' ? 'burn' : 'discard'}.`;
+    const n = p.count;
+    const s = n > 1 ? 's' : '';
+    switch (p.kind) {
+      case 'discard':
+        return `Choose ${n} card${s} to discard.`;
+      case 'burn':
+        return `Choose ${n} card${s} to burn.`;
+      case 'cloud':
+        return `Choose ${n} cloud${s} to remove.`;
+      case 'minion':
+        return `Choose ${n} minion${s} to discard.`;
+      case 'recover':
+        return `Choose ${n} card${s} from your discard pile.`;
+    }
   }
 
-  /** A hand click while a choice is pending: toggle the pick; the last one resolves. */
+  /** A hand click while a discard/burn choice is pending: toggle; the last pick resolves. */
   function toggleChoice(index: number) {
     if (!pending || animating) return;
+    if (pending.kind !== 'discard' && pending.kind !== 'burn') return;
     const inst = player.hand[index];
     if (!inst) return;
     if (pending.kind === 'burn' && inst.unplayable !== true) {
@@ -387,13 +401,35 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     finishChoice(next);
   }
 
+  /** A cloud/minion/discard-pile click: add the pick; the last one resolves. */
+  function addPick(value: number) {
+    if (!pending || animating || choicePicks.includes(value)) return;
+    const next = [...choicePicks, value];
+    if (next.length < pending.count) {
+      setChoicePicks(next);
+      return;
+    }
+    finishChoice(next);
+  }
+
   function finishChoice(picks: readonly number[]) {
     if (!pending) return;
     const kind = pending.kind;
-    const r = resolvePendingChoice(state, picks.map((i) => player.hand[i]!.uid));
+    // Hand picks are collected as indices (for the fan's visuals) and converted
+    // to uids here; the other kinds collect their final values directly.
+    const values = kind === 'discard' || kind === 'burn' ? picks.map((i) => player.hand[i]!.uid) : picks;
+    const label =
+      kind === 'cloud'
+        ? `You remove ${picks.length} cloud${picks.length > 1 ? 's' : ''}`
+        : kind === 'minion'
+          ? `You discard ${picks.length} minion${picks.length > 1 ? 's' : ''}`
+          : kind === 'recover'
+            ? 'You recover a card'
+            : `You ${kind} ${picks.length} card${picks.length > 1 ? 's' : ''}`;
+    const r = resolvePendingChoice(state, values);
     setChoicePicks([]);
     setState(r.state);
-    logTurnIfAny(r.state, `You ${kind} ${picks.length} card${picks.length > 1 ? 's' : ''}`, r.events, 'player');
+    logTurnIfAny(r.state, label, r.events, 'player');
     if (r.state.pending) {
       setLog(choicePrompt(r.state.pending)); // the resumed card asked again
     } else if (r.state.phase === 'won' || r.state.phase === 'lost') {
@@ -534,10 +570,16 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
             clouds={player.clouds}
             onHover={hoverCloud}
             onLeave={hideTip}
-            removable={overCap}
-            onRemove={removeCloudAt}
+            removable={overCap || pending?.kind === 'cloud'}
+            onRemove={pending?.kind === 'cloud' ? addPick : removeCloudAt}
           />
-          <MinionRow minions={player.minions} onHover={hoverCard} onLeave={hideTip} />
+          <MinionRow
+            minions={player.minions}
+            onHover={hoverCard}
+            onLeave={hideTip}
+            targetable={pending?.kind === 'minion'}
+            onTarget={(id) => addPick(player.minions.findIndex((m) => m.id === id))}
+          />
         </div>
       </div>
 
@@ -563,8 +605,11 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
         energy={player.energy}
         playable={player.hand.map((inst, i) =>
           // While choosing, "playable" means "pickable": any card for a
-          // discard, only Unplayable ones for a burn.
-          pending ? pending.kind === 'discard' || inst.unplayable === true : canPlayAt(player, i),
+          // discard, only Unplayable ones for a burn, nothing for the
+          // choices that live outside the hand (clouds/minions/discard pile).
+          pending
+            ? pending.kind === 'discard' || (pending.kind === 'burn' && inst.unplayable === true)
+            : canPlayAt(player, i),
         )}
         phase={state.phase}
         mullPicks={pending ? choicePicks : mullPicks}
@@ -592,8 +637,8 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
         )}
       </div>
 
-      {/* Card-choice prompt: pick which card(s) to discard or burn */}
-      {pending && !animating && (
+      {/* Card-choice prompt: pick which card(s)/cloud(s)/minion(s) */}
+      {pending && pending.kind !== 'recover' && !animating && (
         <div
           style={{
             position: 'absolute',
@@ -604,8 +649,51 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
           }}
         >
           <span style={{ ...pill, background: 'rgba(0,0,0,.72)', fontSize: 15 }}>
-            {pending.kind === 'burn' ? '🔥' : '🗑'} {choicePrompt(pending)} ({choicePicks.length}/{pending.count})
+            {pending.kind === 'burn' ? '🔥' : pending.kind === 'cloud' ? '☁' : '🗑'} {choicePrompt(pending)} (
+            {choicePicks.length}/{pending.count})
           </span>
+        </div>
+      )}
+
+      {/* Discard-pile picker (Dry Out): the pile is hidden, so show it to choose from */}
+      {pending?.kind === 'recover' && !animating && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '18%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 12,
+            background: 'rgba(0,0,0,.82)',
+            padding: 16,
+            borderRadius: 12,
+            maxWidth: '72%',
+          }}
+        >
+          <div style={{ color: '#fff', fontWeight: 700, marginBottom: 10, textAlign: 'center' }}>
+            ♻ {choicePrompt(pending)}
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center', maxHeight: 320, overflowY: 'auto' }}>
+            {player.discardPile.map((inst) => {
+              const card = getCard(inst.cardId);
+              return (
+                <div
+                  key={inst.uid}
+                  onClick={() => addPick(inst.uid)}
+                  style={{ cursor: 'pointer', textAlign: 'center', width: 76 }}
+                >
+                  <img
+                    src={card ? cardArtUrl(card) : ''}
+                    alt={card?.name ?? String(inst.cardId)}
+                    width={72}
+                    height={108}
+                    style={{ imageRendering: 'pixelated', borderRadius: 6, border: '2px solid #fff', background: '#eee' }}
+                  />
+                  <div style={{ color: '#fff', fontSize: 11, marginTop: 2 }}>{card?.name ?? inst.cardId}</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

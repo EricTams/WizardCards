@@ -181,17 +181,23 @@ export function makeCombatant(
 }
 
 /**
- * A card choice the battle is waiting on: "choose `count` cards to discard"
- * (Quicksand, the Fog penalty) or "…to burn" (the Writer). While set, the
- * resolution that raised it is suspended — `queued` holds the not-yet-applied
- * remainder of that resolution as plain actions, so the pause itself survives
- * serialization and replay. The cards layer raises it (`SetPendingChoice`) only
- * for a human player with a real choice to make; the AI always auto-resolves.
+ * A choice the battle is waiting on: "choose `count` cards to discard"
+ * (Quicksand, the Fog penalty), "…to burn" (the Writer), "…clouds to remove"
+ * (the design's 'X clouds, your choice'), "…minions to discard" (Throw, Hurl),
+ * or "…cards from your discard pile" (Dry Out). While set, the resolution that
+ * raised it is suspended — `queued` holds the not-yet-applied remainder of
+ * that resolution as plain actions, so the pause itself survives serialization
+ * and replay. The cards layer raises it (`SetPendingChoice`) only for a human
+ * player with a real choice to make; the AI always auto-resolves.
+ *
+ * Picks are numbers whose meaning follows the kind: card `uid`s for
+ * hand/discard-pile kinds (`discard`/`burn`/`recover`), and plain indices for
+ * `cloud`/`minion` (clouds and minions have no uids).
  */
 export interface PendingChoice {
-  readonly kind: 'discard' | 'burn';
+  readonly kind: 'discard' | 'burn' | 'cloud' | 'minion' | 'recover';
   readonly owner: EntityId;
-  /** How many cards must be picked. */
+  /** How many picks must be made. */
   readonly count: number;
   /** The suspended remainder of the interrupted resolution. */
   readonly queued: readonly Action[];
