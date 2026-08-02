@@ -12,6 +12,7 @@ import type { CardDef } from '@cards/registry';
 import { CLOUD_CARDS, CLOUD_ZAP, SUN_RAY, CRISSCROSS, SHINE, RAIN, HAZE, CLEANSE } from '@cards/definitions/cloud';
 import { WIZARD_CARDS } from '@cards/definitions/wizard';
 import { CRAB_CARDS } from '@cards/definitions/crab';
+import { WRITER_CARDS } from '@cards/definitions/writer';
 
 /** Base energy every combatant starts each turn with (design: "start with 1"). */
 export const BASE_ENERGY = 1;
@@ -21,6 +22,12 @@ export const BASE_MAX_HP = 20;
 export const DECK_SIZE = 20;
 /** Base number of clouds a combatant may hold; creating more replaces existing ones. */
 export const CLOUD_CAP = 3;
+/**
+ * "When you run out of cards, draw 3": the moment a combatant's hand hits zero
+ * mid-battle, they draw this many (plus `bonusRefillDraw` — Brain in a Jar).
+ * Orchestrated by the trigger cascade in `match/index.ts`.
+ */
+export const HAND_REFILL = 3;
 
 /**
  * This combatant's actual cloud limit — the base cap plus any slots it has won
@@ -38,13 +45,13 @@ export interface CharacterDef {
   /** The ~40-card pool a 20-card deck is drawn from (authored subset today). */
   readonly pool: readonly CardDef[];
   /** Background theme key the battle screen uses. */
-  readonly theme: 'field' | 'chamber' | 'beach';
+  readonly theme: 'field' | 'chamber' | 'beach' | 'study';
   /** False until the character has authored cards + art. */
   readonly playable: boolean;
 }
 
 /** The characters with authored cards. Others are placeholders for later. */
-export const CHARACTERS: Record<'cloud' | 'wizard' | 'crab', CharacterDef> = {
+export const CHARACTERS: Record<'cloud' | 'wizard' | 'crab' | 'writer', CharacterDef> = {
   cloud: {
     id: 'cloud',
     name: 'The Cloud',
@@ -67,6 +74,14 @@ export const CHARACTERS: Record<'cloud' | 'wizard' | 'crab', CharacterDef> = {
     blurb: 'Churns its hand — cards with Molt play for free when discarded.',
     pool: CRAB_CARDS,
     theme: 'beach',
+    playable: true,
+  },
+  writer: {
+    id: 'writer',
+    name: 'The Writer',
+    blurb: 'Burns Unplayable cards for their effects and builds Bravery for a burst.',
+    pool: WRITER_CARDS,
+    theme: 'study',
     playable: true,
   },
 };
@@ -128,6 +143,18 @@ export const RELICS: readonly RelicDef[] = [
     name: 'Seashell',
     text: 'Draw 6 cards for your opening hand instead of 5 (still discard 2).',
     openingHand: 6,
+  },
+  {
+    id: 'gel-pen',
+    name: 'Gel Pen',
+    text: 'Start combat with 1 Bravery.',
+    onCombatStart: (o) => [{ type: 'GainBravery', target: o, amount: 1 }],
+  },
+  {
+    id: 'brain-in-a-jar',
+    name: 'Brain in a Jar',
+    text: 'When you run out of cards, draw 4 cards instead of 3.',
+    onCombatStart: (o) => [{ type: 'IncreaseRefillDraw', target: o, amount: 1 }],
   },
 ];
 

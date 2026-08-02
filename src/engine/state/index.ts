@@ -34,6 +34,14 @@ export interface CardInstance {
   readonly cardId: CardId;
   /** Granted by Dungeon-ness / Skitter / Decorator — this copy only. */
   readonly molt?: boolean;
+  /**
+   * This copy cannot be played from hand; Burn spends it for its effects.
+   * Unlike `molt`, this flag covers BOTH the printed keyword and a granted one
+   * (Trash Can): the reducer selects Burn targets and counts Find hits by this
+   * flag alone, so the cards layer stamps printed Unplayable onto every copy it
+   * creates (see `stampPrintedKeywords` in `src/cards/match/burn.ts`).
+   */
+  readonly unplayable?: boolean;
 }
 
 /** A summoned minion in play. References the card it was summoned from. */
@@ -67,6 +75,18 @@ export interface Combatant {
   /** The Writer's block/damage burst charge. */
   readonly bravery: number;
   /**
+   * Whether Bravery's bonus has boosted a block/shield gain this turn — the
+   * design's "the FIRST block card you play gives you X additional block".
+   * Reset by `ClearTurnCounters` at the start of the turn.
+   */
+  readonly braveryApplied: boolean;
+  /**
+   * How many Unplayable cards the last Find drew — "If you find an unplayable
+   * card, …" riders read it (`IfFoundUnplayable`). Reset by `NoteCardPlayed`,
+   * so each card play starts with a clean slate.
+   */
+  readonly unplayablesFound: number;
+  /**
    * Cards discarded since this combatant's turn began — the Crab scales off it
    * ("deal 1 damage for each card discarded this turn"). Reset by `StartTurn`.
    */
@@ -92,6 +112,13 @@ export interface Combatant {
    * belonging to the cards layer, which the engine must not know about.
    */
   readonly bonusMaxClouds: number;
+  /**
+   * Extra cards drawn by the run-out-of-cards refill ("the moment your hand
+   * hits zero, draw 3" — Brain in a Jar makes it 4). Like `bonusMaxClouds`,
+   * only the bonus lives here; the base 3 is a cards-layer rule (`HAND_REFILL`)
+   * and the refill itself is orchestrated there (`src/cards/match`).
+   */
+  readonly bonusRefillDraw: number;
   /**
    * Set by Solar Power: this combatant's clouds fire twice on their next turn.
    * Consumed by the start-of-turn cascade after the second firing.
@@ -132,12 +159,15 @@ export function makeCombatant(
     poison: 0,
     power: 0,
     bravery: 0,
+    braveryApplied: false,
+    unplayablesFound: 0,
     discardedThisTurn: 0,
     cardsPlayedThisTurn: 0,
     minionsDiscarded: 0,
     venomRetains: false,
     clouds: [],
     bonusMaxClouds: 0,
+    bonusRefillDraw: 0,
     cloudsPlayTwice: false,
     minions: [],
     persistents: [],

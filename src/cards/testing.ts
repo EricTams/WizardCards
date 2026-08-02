@@ -24,6 +24,7 @@ import {
 } from '@engine/index';
 import type { CardDef } from '@cards/registry';
 import { compile } from '@cards/compile';
+import { stampPrintedKeywords } from '@cards/match/burn';
 
 /** The player and the primary target used by every card test. */
 export const TEST_SELF: EntityId = entityId('player');
@@ -99,7 +100,7 @@ export interface CardTestResult {
  * Combatant directly rather than through `buildTestState`.
  */
 export function pileOf(...ids: readonly CardId[]): CardInstance[] {
-  return ids.map((cardId, i) => ({ uid: i, cardId }));
+  return stampPrintedKeywords(ids.map((cardId, i) => ({ uid: i, cardId })));
 }
 
 /** Drop the id-named piles so the rest can be spread onto a real Combatant. */
@@ -114,9 +115,9 @@ function withoutPiles(
   return rest;
 }
 
-/** Wrap ids as instances. `base` keeps uids distinct across the piles. */
+/** Wrap ids as instances (stamping printed keywords). `base` keeps uids distinct across the piles. */
 function asInstances(pile: readonly CardId[] | undefined, base: number): CardInstance[] {
-  return (pile ?? []).map((cardId, i) => ({ uid: base + i, cardId }));
+  return stampPrintedKeywords((pile ?? []).map((cardId, i) => ({ uid: base + i, cardId })));
 }
 
 export function buildTestState(setup: CardTestSetup = {}): GameState {

@@ -39,6 +39,10 @@ return  "this card to your hand"
 shuffle ("this card into your draw pile" | "your draw pile")
 move    <number> "card from your discard pile to your draw pile"
 add     "molt to" <number> "cards in your hand" | add "molt to the top card of your draw pile"
+add     "unplayable to" <number> "cards in your hand"
+burn    [<number>] | burn "all unplayable cards in your hand"
+find    <number> ["cards"]
+set     "your bravery to" ("zero" | <number>)
 "venom" | "drink" | "minion"       bare keyword effects (no number/noun)
 ```
 
@@ -70,6 +74,12 @@ add     "molt to" <number> "cards in your hand" | add "molt to the top card of y
 | `Move 1 card from your discard pile to your draw pile.` | `{ verb:'move', amount:1, noun:'discardToDraw' }` | `MoveDiscardToDrawPile(self, 1)` |
 | `Add molt to 2 cards in your hand.` | `{ verb:'add', amount:2, noun:'moltHand' }`   | `AddMoltToHand(self, 2)`                   |
 | `Add molt to the top card of your draw pile.` | `{ verb:'add', noun:'moltDrawTop' }` | `AddMoltToDrawTop(self)`             |
+| `Add unplayable to 2 cards in your hand.` | `{ verb:'add', amount:2, noun:'unplayableHand' }` | `AddUnplayableToHand(self, 2)`  |
+| `Burn 2.`                  | `{ verb:'burn', amount:2 }`                          | `BurnCards(self, 2)`                       |
+| `Burn all unplayable cards in your hand.` | `{ verb:'burn', noun:'all' }`         | `BurnCards(self)` (no count = all)         |
+| `Find 2 cards.`            | `{ verb:'find', amount:2, noun:'cards' }`            | `FindDraw(self, 2)`                        |
+| `Set your bravery to zero.`| `{ verb:'set', amount:0, noun:'bravery' }`           | `SetBravery(self, 0)`                      |
+| `Deal 1 damage to all opponents.` | `{ verb:'deal', amount:1, target:'allEnemies' }` | `DealDamageToAll(self, 1)`              |
 | `Venom.`                   | `{ verb:'venom' }`                                  | `Venom(self, target)`                      |
 | `Drink.`                   | `{ verb:'drink' }`                                  | `Drink(self)`                              |
 | `Minion.`                  | `{ verb:'minion' }`                                 | `SummonMinion(self, sourceCard)`           |
@@ -97,6 +107,8 @@ Parsing has two levels: text splits into **sentences** on `.`/`;`, and each sent
 | `When a minion is replayed, …`                      | `{ event: 'minionReplayed' }`                             |
 | `When you discard a card, …`                        | `{ event: 'discardCard' }`                                |
 | `When you discard a card with molt, …`              | `{ event: 'discardMoltCard' }`                            |
+| `When you burn an unplayable card, …`               | `{ event: 'burnCard' }`                                   |
+| `When you draw an unplayable card, …`               | `{ event: 'drawUnplayableCard' }`                         |
 | `When you shuffle your deck, …`                     | `{ event: 'shuffleDeck' }`                                |
 | `At the start of your turn, …`                      | `{ event: 'startTurn' }`                                  |
 | `At the end of your turn, …`                        | `{ event: 'endTurn' }`                                    |
@@ -107,7 +119,9 @@ The when-phrase is matched by keywords, so wording is forgiving. A reactive trig
 
 **Random clouds.** A `random` cloud type carries no `cloudType` — the reducer draws one through `state.rng`, so the same seed reproduces the same weather and the action log stays the source of truth. `CreateRandomClouds` emits one `CloudsCreated` per cloud rather than one batched event, since the types differ and "whenever you create a cloud" fires per cloud. `FillCloudSlots` is handed `CLOUD_CAP` as its `baseCap` because the limit is a cards-layer rule; the engine adds the combatant's own bonus.
 
-**Cards are copies, not ids.** Piles hold `CardInstance` — `{ uid, cardId, molt? }` — because a *copy* can carry state its card does not. Granting Molt (Dungeon-ness, Skitter, Decorator) marks one copy, so a second copy of the same card in the same hand stays unmarked, and the mark rides along as the copy moves between piles. `uid` comes from `GameState.idSeq`, keeping identity deterministic across a replay.
+**Cards are copies, not ids.** Piles hold `CardInstance` — `{ uid, cardId, molt?, unplayable? }` — because a *copy* can carry state its card does not. Granting Molt (Dungeon-ness, Skitter, Decorator) marks one copy, so a second copy of the same card in the same hand stays unmarked, and the mark rides along as the copy moves between piles. `uid` comes from `GameState.idSeq`, keeping identity deterministic across a replay.
+
+The two flags differ in one deliberate way: `molt` covers only a *granted* Molt (printed Molt stays in the card text), but `unplayable` covers **printed and granted alike** — the reducer itself selects Burn targets and counts Find hits, and it can't read card text, so `stampPrintedKeywords` (`src/cards/match/burn.ts`) stamps printed Unplayable onto every copy the cards layer creates (battle setup, test fixtures). A copy minted from an existing instance (Sand Kick's return, reshuffles) keeps its marks automatically.
 
 Two conveniences keep this from leaking everywhere: **events still carry plain `CardId[]`** (with an extra `instances` field on `CardsDiscarded`, since a granted Molt is invisible in an id), and **test fixtures still name piles by card id** — `buildTestState` wraps them, and `pileOf(...)` does the same for tests that build a combatant directly.
 
@@ -125,11 +139,15 @@ Granting is deterministic rather than chosen: with no UI for "choose a card", it
 
 **Two resolvers, one AST.** On-play effects go through `dsl/resolver.ts`; effects *inside a trigger* go through `resolveTriggerEffect` in `match/compile-persistent.ts`, which resolves with state in hand (so scaling is computed there). A verb that varies its action by noun has to be taught to **both** — `discard` needs its minion/card/hand split in each, or a trigger silently does the wrong one.
 
-**Targeting** — a trailing `to all opponents` / `to a random opponent` on a `deal` effect sets `target: 'allEnemies' | 'randomEnemy'`. Inside a trigger, a bare `deal` defaults to a random opponent; other effects (heal/gain/poison) apply to the persistent's owner. (On-play effects still hit `ctx.target`; targeting words there are currently ignored.)
+**Targeting** — a trailing `to all opponents` / `to a random opponent` on a `deal` effect sets `target: 'allEnemies' | 'randomEnemy'`. Inside a trigger, a bare `deal` defaults to a random opponent; other effects (heal/gain/poison) apply to the persistent's owner. On-play, a bare `deal` hits `ctx.target`, while the targeting words override it — `allEnemies` → `DealDamageToAll`, `randomEnemy` → `DealDamageToRandomEnemy` (Junk's "Deal 1 damage to all opponents").
 
 **Modifiers** — the two stat-changing persistents: `Snow clouds heal 2 instead of 1.` → `{ modifier: 'snowHealBonus', amount: 1 }`, and `Fog clouds no longer force a discard.` → `{ modifier: 'suppressFogDiscard' }`.
 
 **`Molt.`** — the Crab's keyword, written as a sentence of its own (`Molt. Deal 4 damage.`) so it can't be mistaken for a verb. It parses to `{ modifier: 'molt' }` and yields **no on-play action**: it marks the card as one that plays for free when *discarded*. The card's other statements are its effects as normal, whether played from hand or fired by Molt. Resolution lives in `src/cards/match/molt.ts` — see `docs/triggers.md`.
+
+**`Unplayable.` / Burn / Find** — the Writer's keyword trio, mirroring Molt's shape. `Unplayable.` parses to `{ modifier: 'unplayable' }`: the card can't be played from hand (`canPlayAt` refuses it), but **Burn** spends it — `BurnCards` moves the copies to the discard pile and the `CardsBurned` event plays each one's effects for free (`src/cards/match/burn.ts`). Burn is a **cost**: `burnCostOf(card)` sums the card's counted burns, and `canPlayAt` requires that many Unplayable cards in hand. **Find** (`Find 2 cards.`) draws like `draw` but records how many Unplayable copies came up in `Combatant.unplayablesFound`; a following sentence `If you find an unplayable card, <effects…>` tags its effects `when: 'foundUnplayable'`, which the resolver wraps in `IfFoundUnplayable` — a conditional action the reducer applies only when the last Find hit. `NoteCardPlayed` zeroes the counter so a rider can never read a stale Find from an earlier card. The design's em-dash cards map onto these sentences: "Find — Draw 2 — Deal 2 Damage" is authored `Find 2 cards. If you find an unplayable card, deal 2 damage.`
+
+**Bravery** (the Writer) — `gain N bravery` banks the charge; the reducer boosts the **first block/shield gain of the turn** by the combatant's Bravery (`braveryApplied` re-arms via `ClearTurnCounters`). The charge is not spent by the boost; `Set your bravery to zero.` (Brain Storm) clears it explicitly. The design says "block card"; since the Writer's defensive cards grant Shields, the boost covers both soaks.
 
 ## Scaling (`deal` amounts that read state)
 
@@ -159,7 +177,7 @@ The game design (`reference/design.md`) is written in exactly this spirit — ev
 
 - ✅ **Scaling** — `deal damage equal to your <resource>` and `deal N damage for each [unique] cloud/minion`, resolved in the reducer via `DealDamageScaled` + `metricValue`. Still open: scaling on non-`deal` effects (Pile Up's "gain shield for each minion in discard", Vial's "poison for each card played"), "Double your Poison", and metrics that need new counters (cards-played-this-turn, discard-pile contents).
 - ✅ **Triggers, conditions, targeting, modifiers** — persistents authored in English (`src/cards/definitions/*-persistents.ts`), compiled by `src/cards/match/compile-persistent.ts`. Still open: more trigger events (draw, block, gain X), richer conditions, and on-play AoE targeting.
-- **More verbs:** `burn`, `find` (Writer), `discard <N> cards` (Crab), Blank/Add (Old Lady), etc.
+- ✅ **The Writer's verbs** — `Unplayable.`, `burn`, `find` + the `If you find an unplayable card, …` rider, `set your bravery to zero`, and the Bravery boost. Still open: Blank/Add and Power's first-attack bonus (Old Lady), `play a random card` (Pull From the Hat), peeking (Cheater, Shredder), and next-turn effects (Well Rested).
 
 The design also implies **card attributes** that `CardDef` (currently just `id / name / cost / text`) doesn't carry yet: a **character**, a **type** (Attack / Skill / Persistent), and card **keywords** (Molt, Minion, Unplayable, Blank, Add). For now character is expressed by which definitions file a card lives in and keywords like Venom/Minion are parsed from the text; whether they become structured `CardDef` fields is still an open modeling question.
 

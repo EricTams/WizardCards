@@ -61,12 +61,17 @@ export function parse(source: string): Result<CardScript, Diagnostic[]> {
       continue;
     }
     const lead = head.value.toLowerCase();
+    const keyword = keywordModifierOf(sentence);
 
     if (TRIGGER_LEADS.has(lead)) {
       const trigger = parseTrigger(sentence, diagnostics);
       if (trigger) triggers.push(trigger);
-    } else if (isMoltSentence(sentence)) {
-      modifiers.push({ kind: 'Modifier', modifier: 'molt', start: head.start, end: sentence[sentence.length - 1]!.end });
+    } else if (lead === 'if') {
+      // "If you find an unplayable card, <effects…>" — the Find rider. Its
+      // effects join the on-play list in order, tagged conditional.
+      effects.push(...parseFindRider(sentence, diagnostics));
+    } else if (keyword) {
+      modifiers.push({ kind: 'Modifier', modifier: keyword, start: head.start, end: sentence[sentence.length - 1]!.end });
     } else if (isModifierSentence(sentence)) {
       const modifier = parseModifier(sentence, diagnostics);
       if (modifier) modifiers.push(modifier);
@@ -151,6 +156,10 @@ function parseEventPhrase(
   }
   if (has('unblocked') && has('damage')) return { event: 'dealUnblockedDamage' };
   if ((has('minion') || has('minions')) && has('replayed')) return { event: 'minionReplayed' };
+  // The Writer's events. Both must be tested before the generic card-discard /
+  // draw readings below — they are narrower phrasings of the same words.
+  if (has('burn')) return { event: 'burnCard' };
+  if (has('draw') && has('unplayable')) return { event: 'drawUnplayableCard' };
   // Card discards. The Molt-qualified form is the narrower reading of the same
   // words, so it has to be tested first.
   if (has('shuffle') || has('shuffled')) return { event: 'shuffleDeck' };
@@ -208,11 +217,40 @@ function normalizeResource(word: string): string {
 // --- modifiers ---------------------------------------------------------------
 
 /**
- * `Molt.` on its own — the Crab's keyword, marking the card as one that plays
- * for free when discarded. A whole sentence so it can't be confused with a verb.
+ * A card keyword as a whole sentence of its own (so it can't be confused with a
+ * verb): `Molt.` — the Crab's plays-for-free-when-discarded — and `Unplayable.`
+ * — the Writer's can't-be-played-but-Burn-spends-it.
  */
-function isMoltSentence(sentence: Token[]): boolean {
-  return sentence.length === 1 && sentence[0]!.type === 'word' && sentence[0]!.value.toLowerCase() === 'molt';
+function keywordModifierOf(sentence: Token[]): 'molt' | 'unplayable' | null {
+  if (sentence.length !== 1 || sentence[0]!.type !== 'word') return null;
+  const word = sentence[0]!.value.toLowerCase();
+  if (word === 'molt') return 'molt';
+  if (word === 'unplayable') return 'unplayable';
+  return null;
+}
+
+/**
+ * "If you find an unplayable card, <effect>[, <effect>…]" — the payoff half of
+ * Find. Each effect is tagged `when: 'foundUnplayable'`, which the resolver
+ * turns into a conditional action gated on the play's last Find.
+ */
+function parseFindRider(sentence: Token[], diagnostics: Diagnostic[]): EffectNode[] {
+  const clauses = splitOn(sentence, CLAUSE_SEP);
+  const phrase = clauses[0]!;
+  const words = phrase.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
+  if (!words.includes('unplayable')) {
+    diagnostics.push(diag('Only "If you find an unplayable card, …" is supported.', phrase[0]!));
+    return [];
+  }
+  const effects: EffectNode[] = [];
+  for (const clause of clauses.slice(1)) {
+    const effect = parseEffectStatement(clause, diagnostics);
+    if (effect) effects.push({ ...effect, when: 'foundUnplayable' });
+  }
+  if (effects.length === 0) {
+    diagnostics.push(diag('"If you find an unplayable card" needs at least one effect after the comma.', phrase[0]!));
+  }
+  return effects;
 }
 
 function isModifierSentence(sentence: Token[]): boolean {
@@ -456,14 +494,20 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
     }
     case 'add': {
-      // "Add molt to 2 cards in your hand." / "…to the top card of your draw pile."
+      // "Add molt to 2 cards in your hand." / "…to the top card of your draw
+      // pile." / "Add unplayable to 2 cards in your hand." (Trash Can).
       const last = group[group.length - 1]!;
       const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
-      if (!words.includes('molt')) {
-        diagnostics.push(diag('Only "add molt to …" is supported.', head));
+      const keyword = words.includes('molt') ? 'molt' : words.includes('unplayable') ? 'unplayable' : null;
+      if (!keyword) {
+        diagnostics.push(diag('Only "add molt to …" and "add unplayable to …" are supported.', head));
         return null;
       }
       if (words.includes('draw')) {
+        if (keyword === 'unplayable') {
+          diagnostics.push(diag('Unplayable can only be added to cards in your hand.', head));
+          return null;
+        }
         return { kind: 'Effect', verb: 'add', noun: 'moltDrawTop', ...span(head, last) };
       }
       const numberTok = group.find((t) => t.type === 'number');
@@ -471,7 +515,7 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
         kind: 'Effect',
         verb: 'add',
         amount: numberTok ? Number(numberTok.value) : 1,
-        noun: 'moltHand',
+        noun: keyword === 'molt' ? 'moltHand' : 'unplayableHand',
         ...span(head, last),
       };
     }
@@ -539,6 +583,40 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
         amount: Number(numberTok.value),
         ...span(head, last),
       };
+    }
+    case 'burn': {
+      // "Burn 2." spends 2 Unplayable cards; "Burn all unplayable cards in your
+      // hand." (Inspiration) spends every one. A bare "Burn." means 1.
+      const last = group[group.length - 1]!;
+      if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'all')) {
+        return { kind: 'Effect', verb: 'burn', noun: 'all', ...span(head, last) };
+      }
+      const numberTok = group.find((t) => t.type === 'number');
+      return { kind: 'Effect', verb: 'burn', amount: numberTok ? Number(numberTok.value) : 1, ...span(head, last) };
+    }
+    case 'find': {
+      // "Find 2 cards." — draw 2 and note whether an Unplayable came up, which
+      // the card's "If you find an unplayable card, …" sentence then reads.
+      const amount = expectNumber(group, 1, head, diagnostics);
+      if (amount === null) return null;
+      const last = group[2] && group[2].type === 'word' ? group[2] : group[1]!;
+      return { kind: 'Effect', verb: 'find', amount, noun: 'cards', ...span(head, last) };
+    }
+    case 'set': {
+      // "Set your bravery to zero." (Brain Storm). Only bravery can be set.
+      const last = group[group.length - 1]!;
+      const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
+      if (!words.includes('bravery')) {
+        diagnostics.push(diag('Only "set your bravery to zero" is supported.', head));
+        return null;
+      }
+      const numberTok = group.find((t) => t.type === 'number');
+      const amount = numberTok ? Number(numberTok.value) : words.includes('zero') ? 0 : null;
+      if (amount === null) {
+        diagnostics.push(diag('"Set your bravery" needs a value, e.g. "set your bravery to zero".', head));
+        return null;
+      }
+      return { kind: 'Effect', verb: 'set', noun: 'bravery', amount, ...span(head, last) };
     }
     case 'discard': {
       // "Discard your hand" takes no number, so it can't go through the

@@ -42,6 +42,10 @@ export type Verb =
   | 'add'
   // minion effects
   | 'discard'
+  // the Writer's mechanics
+  | 'burn'
+  | 'find'
+  | 'set'
   // bare keyword effects (no amount / noun)
   | 'venom'
   | 'drink'
@@ -61,8 +65,13 @@ export interface EffectNode {
   readonly cloudType?: CloudType;
   /** When set, the amount scales off state ("equal to your energy"). */
   readonly scale?: ScaleSpec;
-  /** Explicit target ("to all opponents"). Only meaningful inside triggers. */
+  /** Explicit target ("to all opponents"). */
   readonly target?: EffectTarget;
+  /**
+   * Set on effects from an "If you find an unplayable card, …" sentence: the
+   * effect applies only when the play's last Find drew an Unplayable card.
+   */
+  readonly when?: 'foundUnplayable';
   /** Source span [start, end) so tools can map a node back to the text. */
   readonly start: number;
   readonly end: number;
@@ -78,6 +87,8 @@ export type TriggerEventKind =
   | 'discardCard'
   | 'discardMoltCard'
   | 'shuffleDeck'
+  | 'burnCard'
+  | 'drawUnplayableCard'
   | 'startTurn'
   | 'endTurn';
 
@@ -102,13 +113,14 @@ export interface TriggerNode {
 }
 
 /**
- * Static rule changes that aren't trigger→effect (Winter, Fall), plus `molt` —
- * a property of the card itself rather than of the board: a card with Molt plays
- * for free when it is discarded (resolved in `src/cards/match`).
+ * Static rule changes that aren't trigger→effect (Winter, Fall), plus the card
+ * keywords `molt` and `unplayable` — properties of the card itself rather than
+ * of the board: a Molt card plays for free when discarded; an Unplayable card
+ * can't be played from hand and is spent by Burn (resolved in `src/cards/match`).
  */
 export interface ModifierNode {
   readonly kind: 'Modifier';
-  readonly modifier: 'snowHealBonus' | 'suppressFogDiscard' | 'molt' | 'minionReplayBonus';
+  readonly modifier: 'snowHealBonus' | 'suppressFogDiscard' | 'molt' | 'unplayable' | 'minionReplayBonus';
   readonly amount?: number;
   readonly start: number;
   readonly end: number;

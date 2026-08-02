@@ -25,7 +25,8 @@ export type GameEvent =
   | { readonly type: 'TurnStarted'; readonly turn: number }
   | { readonly type: 'TurnEnded'; readonly turn: number }
   | { readonly type: 'PhaseChanged'; readonly phase: Phase }
-  | { readonly type: 'CardsDrawn'; readonly owner: EntityId; readonly cards: readonly CardId[] }
+  /** `instances` carries the copies — Paper Trail keys off a drawn copy's Unplayable flag. */
+  | { readonly type: 'CardsDrawn'; readonly owner: EntityId; readonly cards: readonly CardId[]; readonly instances: readonly CardInstance[] }
   /**
    * Cards left a hand for the discard pile. Only `'discard'` is a discard in the
    * game's sense — the Fog penalty, "discard 2 cards" — and only it may set off
@@ -53,6 +54,10 @@ export type GameEvent =
   | { readonly type: 'CardsRecovered'; readonly owner: EntityId; readonly cards: readonly CardId[] }
   | { readonly type: 'CardReturnedToHand'; readonly owner: EntityId; readonly cardId: CardId }
   | { readonly type: 'MoltGranted'; readonly owner: EntityId; readonly cards: readonly CardId[] }
+  | { readonly type: 'UnplayableGranted'; readonly owner: EntityId; readonly cards: readonly CardId[] }
+  /** Unplayable cards spent by Burn — the cards layer plays their effects for free. */
+  | { readonly type: 'CardsBurned'; readonly owner: EntityId; readonly cards: readonly CardId[]; readonly instances: readonly CardInstance[] }
+  | { readonly type: 'BraverySet'; readonly target: EntityId; readonly amount: number }
   | { readonly type: 'EnergySet'; readonly target: EntityId; readonly amount: number }
   // `unblocked` is the portion that got past block+shield — what triggers like
   // Rot Away ("whenever you deal unblocked damage") key off.
@@ -69,6 +74,7 @@ export type GameEvent =
   // `removed` lists the actual cloud types taken away — Static keys off Lightning.
   | { readonly type: 'CloudsRemoved'; readonly target: EntityId; readonly count: number; readonly removed: readonly CloudType[] }
   | { readonly type: 'MaxCloudsIncreased'; readonly target: EntityId; readonly amount: number }
+  | { readonly type: 'RefillDrawIncreased'; readonly target: EntityId; readonly amount: number }
   | { readonly type: 'CloudsPlayTwiceSet'; readonly target: EntityId; readonly value: boolean }
   | { readonly type: 'VenomRetainsSet'; readonly target: EntityId; readonly value: boolean }
   | { readonly type: 'CardPlayed'; readonly owner: EntityId }
@@ -107,7 +113,13 @@ export function apply(state: GameState, action: Action): ApplyResult {
 
     case 'ClearTurnCounters':
       return {
-        state: mapCombatant(state, action.target, (c) => ({ ...c, discardedThisTurn: 0, cardsPlayedThisTurn: 0 })),
+        state: mapCombatant(state, action.target, (c) => ({
+          ...c,
+          discardedThisTurn: 0,
+          cardsPlayedThisTurn: 0,
+          braveryApplied: false,
+          unplayablesFound: 0,
+        })),
         events: [{ type: 'TurnCountersCleared', target: action.target }],
       };
 
@@ -146,16 +158,10 @@ export function apply(state: GameState, action: Action): ApplyResult {
       return dealDamage(state, action.target, action.amount);
 
     case 'GainBlock':
-      return {
-        state: mapCombatant(state, action.target, (c) => ({ ...c, block: c.block + action.amount })),
-        events: [{ type: 'BlockGained', target: action.target, amount: action.amount }],
-      };
+      return gainResource(state, action.target, 'block', action.amount);
 
     case 'GainShield':
-      return {
-        state: mapCombatant(state, action.target, (c) => ({ ...c, shield: c.shield + action.amount })),
-        events: [{ type: 'ShieldGained', target: action.target, amount: action.amount }],
-      };
+      return gainResource(state, action.target, 'shield', action.amount);
 
     case 'Heal':
       return {
@@ -305,8 +311,14 @@ export function apply(state: GameState, action: Action): ApplyResult {
       return discardMinion(state, action.owner, findCombatant(state, action.owner)?.minions.length ?? 0);
 
     case 'NoteCardPlayed':
+      // Also zero `unplayablesFound`, so a card's "if you find …" riders can only
+      // read a Find from THIS play, never a stale one from an earlier card.
       return {
-        state: mapCombatant(state, action.owner, (c) => ({ ...c, cardsPlayedThisTurn: c.cardsPlayedThisTurn + 1 })),
+        state: mapCombatant(state, action.owner, (c) => ({
+          ...c,
+          cardsPlayedThisTurn: c.cardsPlayedThisTurn + 1,
+          unplayablesFound: 0,
+        })),
         events: [{ type: 'CardPlayed', owner: action.owner }],
       };
 
@@ -346,6 +358,15 @@ export function apply(state: GameState, action: Action): ApplyResult {
     case 'RemoveCloudAt':
       return removeCloudAt(state, action.target, action.index);
 
+    case 'IncreaseRefillDraw':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({
+          ...c,
+          bonusRefillDraw: c.bonusRefillDraw + action.amount,
+        })),
+        events: [{ type: 'RefillDrawIncreased', target: action.target, amount: action.amount }],
+      };
+
     case 'Venom':
       return venom(state, action.self, action.target);
 
@@ -357,6 +378,62 @@ export function apply(state: GameState, action: Action): ApplyResult {
 
     case 'DiscardMinion':
       return discardMinion(state, action.owner, action.count);
+
+    case 'AddUnplayableToHand': {
+      // Leftmost unmarked copies, like AddMoltToHand — but because printed
+      // Unplayable is stamped onto copies (see CardInstance.unplayable), this
+      // correctly skips cards that are already Unplayable either way.
+      const c = findCombatant(state, action.owner);
+      if (!c) return { state, events: [] };
+      let left = Math.max(0, action.count);
+      const granted: CardId[] = [];
+      const hand = c.hand.map((inst) => {
+        if (left <= 0 || inst.unplayable) return inst;
+        left -= 1;
+        granted.push(inst.cardId);
+        return { ...inst, unplayable: true };
+      });
+      if (granted.length === 0) return { state, events: [] };
+      return {
+        state: mapCombatant(state, action.owner, (cc) => ({ ...cc, hand })),
+        events: [{ type: 'UnplayableGranted', owner: action.owner, cards: granted }],
+      };
+    }
+
+    case 'BurnCards':
+      return burnCards(state, action.owner, action.count);
+
+    case 'FindDraw': {
+      const drawn = drawCards(state, action.owner, action.count);
+      const found = drawn.drawn.filter((inst) => inst.unplayable).length;
+      return {
+        state: mapCombatant(drawn.state, action.owner, (c) => ({ ...c, unplayablesFound: found })),
+        events: drawn.events,
+      };
+    }
+
+    case 'IfFoundUnplayable': {
+      const c = findCombatant(state, action.owner);
+      if (!c || c.unplayablesFound <= 0) return { state, events: [] };
+      return apply(state, action.action);
+    }
+
+    case 'SetBravery':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({ ...c, bravery: Math.max(0, action.amount) })),
+        events: [{ type: 'BraverySet', target: action.target, amount: Math.max(0, action.amount) }],
+      };
+
+    case 'DealDamageToAll': {
+      let cur = state;
+      const events: GameEvent[] = [];
+      for (const opp of opponentsOf(state, action.self).filter((o) => o.hp > 0)) {
+        const r = dealDamage(cur, opp.id, action.amount);
+        cur = r.state;
+        events.push(...r.events);
+      }
+      return { state: cur, events };
+    }
 
     default:
       // Exhaustiveness guard: adding an Action variant without handling it here
@@ -438,9 +515,13 @@ export function metricValue(state: GameState, id: EntityId, metric: ScaleMetric)
   }
 }
 
-function drawCards(state: GameState, owner: EntityId, count: number): ApplyResult {
+function drawCards(
+  state: GameState,
+  owner: EntityId,
+  count: number,
+): ApplyResult & { readonly drawn: readonly CardInstance[] } {
   const c = findCombatant(state, owner);
-  if (!c) return { state, events: [{ type: 'CardsDrawn', owner, cards: [] }] };
+  if (!c) return { state, events: [{ type: 'CardsDrawn', owner, cards: [], instances: [] }], drawn: [] };
 
   let drawPile = c.drawPile.slice();
   let discardPile = c.discardPile.slice();
@@ -463,10 +544,41 @@ function drawCards(state: GameState, owner: EntityId, count: number): ApplyResul
     drawn.push(card);
   }
 
-  events.push({ type: 'CardsDrawn', owner, cards: cardIdsOf(drawn) });
+  events.push({ type: 'CardsDrawn', owner, cards: cardIdsOf(drawn), instances: drawn });
   return {
     state: { ...mapCombatant(state, owner, (cc) => ({ ...cc, drawPile, hand, discardPile })), rng },
     events,
+    drawn,
+  };
+}
+
+/**
+ * Burn: move up to `count` Unplayable copies (leftmost first; all of them when
+ * `count` is omitted) from the hand to the discard pile. Selection is by the
+ * instance's `unplayable` flag — the cards layer stamps printed Unplayable onto
+ * copies, so the reducer never needs to read card text. Deliberately NOT counted
+ * in `discardedThisTurn`: Burn is its own mechanic, not a hand discard, and it
+ * raises `CardsBurned` (which plays the burned effects) rather than
+ * `CardsDiscarded` (which would set off Molt).
+ */
+function burnCards(state: GameState, owner: EntityId, count: number | undefined): ApplyResult {
+  const c = findCombatant(state, owner);
+  if (!c) return { state, events: [{ type: 'CardsBurned', owner, cards: [], instances: [] }] };
+  let left = count ?? c.hand.length;
+  const burned: CardInstance[] = [];
+  const hand = c.hand.filter((inst) => {
+    if (left <= 0 || !inst.unplayable) return true;
+    left -= 1;
+    burned.push(inst);
+    return false;
+  });
+  return {
+    state: mapCombatant(state, owner, (cc) => ({
+      ...cc,
+      hand,
+      discardPile: [...cc.discardPile, ...burned],
+    })),
+    events: [{ type: 'CardsBurned', owner, cards: cardIdsOf(burned), instances: burned }],
   };
 }
 
@@ -576,9 +688,23 @@ function gainResource(
   state: GameState,
   target: EntityId,
   resource: 'block' | 'shield' | 'energy' | 'power' | 'bravery' | 'poison',
-  amount: number,
+  baseAmount: number,
 ): ApplyResult {
-  const next = mapCombatant(state, target, (c) => ({ ...c, [resource]: c[resource] + amount }));
+  // Bravery (the Writer): the first block/shield gain of the turn is boosted by
+  // the combatant's Bravery. The charge is not spent — Brain Storm zeroes it —
+  // but it boosts only once per turn (`braveryApplied`).
+  const c = findCombatant(state, target);
+  const boosts =
+    (resource === 'block' || resource === 'shield') &&
+    baseAmount > 0 &&
+    (c?.bravery ?? 0) > 0 &&
+    c?.braveryApplied === false;
+  const amount = boosts ? baseAmount + c!.bravery : baseAmount;
+  const next = mapCombatant(state, target, (cc) => ({
+    ...cc,
+    [resource]: cc[resource] + amount,
+    ...(boosts ? { braveryApplied: true } : {}),
+  }));
   const event: GameEvent =
     resource === 'block'
       ? { type: 'BlockGained', target, amount }

@@ -28,6 +28,8 @@ import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
 import { activePersistents } from '@cards/match/persistents';
 import { moltTriggers } from '@cards/match/molt';
+import { burnTriggers } from '@cards/match/burn';
+import { HAND_REFILL } from '@cards/match/content';
 
 export interface RunResult {
   readonly state: GameState;
@@ -39,14 +41,16 @@ const TRIGGER_CAP = 1000;
 
 /**
  * Follow-up actions one event owes: what the active persistents want, plus the
- * free plays from any discarded Molt cards. Two sources because they live in
- * different places — persistents react from the play area, a Molt card reacts as
- * it leaves the hand (see `molt.ts`).
+ * free plays from any discarded Molt cards and any Burned Unplayable cards.
+ * Three sources because they live in different places — persistents react from
+ * the play area, Molt and Burn cards react as they leave the hand (see
+ * `molt.ts` / `burn.ts`).
  */
 export function reactiveTriggers(state: GameState, event: GameEvent): Action[] {
   return [
     ...activePersistents(state).flatMap((p) => (p.onEvent ? p.onEvent(state, event) : [])),
     ...moltTriggers(state, event),
+    ...burnTriggers(state, event),
   ];
 }
 
@@ -66,6 +70,49 @@ export function applyWithTriggers(state: GameState, action: Action): RunResult {
       events.push(...result.events);
       queue.push(...result.events);
     }
+  }
+  return { state: current, events };
+}
+
+/**
+ * "Run out of cards": the next refill draw owed, or null. A combatant whose
+ * hand is empty mid-battle draws `HAND_REFILL` (+ their `bonusRefillDraw` —
+ * Brain in a Jar) new cards. A design rule, so it lives here beside the other
+ * orchestration, not in the engine. Gated to the battle phases — setup and the
+ * mulligan legitimately pass through empty hands — and to combatants who still
+ * have cards *somewhere*, so a truly exhausted deck can't loop the refill.
+ */
+function refillDraw(state: GameState): Action | null {
+  if (state.phase !== 'playerTurn' && state.phase !== 'enemyTurn') return null;
+  const emptyHanded = [state.player, ...state.enemies].find(
+    (c) => c.hp > 0 && c.hand.length === 0 && c.drawPile.length + c.discardPile.length > 0,
+  );
+  if (!emptyHanded) return null;
+  return { type: 'DrawCards', owner: emptyHanded.id, count: HAND_REFILL + emptyHanded.bonusRefillDraw };
+}
+
+/**
+ * Settle run-out-of-cards refills. Called at STEP boundaries — after a card
+ * fully resolves, after end-of-turn discards, at the end of the start-of-turn
+ * cascade — and deliberately NOT inside `applyWithTriggers`: a mid-card refill
+ * could reshuffle the very card being played out of the discard pile before
+ * its own "shuffle this into your draw pile" resolves, and would double-fill
+ * hands for cards that empty-then-redraw (Refresh, Exoskeleton). "The moment
+ * your hand hits zero" means as soon as whatever emptied it has finished.
+ *
+ * One refill at a time, so each recheck sees the previous refill's whole
+ * cascade. Terminates because a refill always draws at least one card into the
+ * empty hand (the piles were non-empty); the guard backstops a pathological
+ * trigger that re-empties hands.
+ */
+export function settleHandRefills(state: GameState): RunResult {
+  let current = state;
+  const events: GameEvent[] = [];
+  let guard = 0;
+  for (let next = refillDraw(current); next && guard++ < 8; next = refillDraw(current)) {
+    const r = applyWithTriggers(current, next);
+    current = r.state;
+    events.push(...r.events);
   }
   return { state: current, events };
 }
@@ -194,6 +241,11 @@ export function runTurnCascade(
   const draw = opts.draw ?? 0;
   if (draw > 0) run([{ type: 'DrawCards', owner: actorId, count: draw }]);
 
+  // A turn must not begin with an empty hand while cards remain to draw.
+  const settled = settleHandRefills(current);
+  current = settled.state;
+  events.push(...settled.events);
+
   return { state: current, events };
 }
 
@@ -237,6 +289,11 @@ export function endTurn(state: GameState, opts: { actorId?: EntityId } = {}): Ru
   const actor = combatantOf(current, actorId);
   const fog = actor ? actor.clouds.filter((c) => c === 'fog').length : 0;
   if (!autumn && fog > 0) run([{ type: 'DiscardCards', owner: actorId, count: fog }]);
+
+  // End-of-turn discards (Fog, Exoskeleton) may have emptied a hand.
+  const settled = settleHandRefills(current);
+  current = settled.state;
+  events.push(...settled.events);
 
   run([{ type: 'EndTurn' }]);
   return { state: current, events };

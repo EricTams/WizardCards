@@ -39,6 +39,15 @@ export function resolve(script: CardScript): Result<ActionProducer[], Diagnostic
 }
 
 function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionProducer | null {
+  // A Find rider ("If you find an unplayable card, …") resolves like the bare
+  // effect, then wraps it in the conditional action the reducer gates.
+  if (effect.when === 'foundUnplayable') {
+    const { when, ...bare } = effect;
+    void when; // dropped so the recursive resolve takes the bare-effect path
+    const inner = resolveEffect(bare, diagnostics);
+    if (!inner) return null;
+    return (ctx) => ({ type: 'IfFoundUnplayable', owner: ctx.self, action: inner(ctx) });
+  }
   const amount = effect.amount ?? 0;
   switch (effect.verb) {
     case 'deal':
@@ -47,6 +56,9 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
         const multiplier = effect.amount ?? 1;
         return (ctx) => ({ type: 'DealDamageScaled', self: ctx.self, target: ctx.target, per, multiplier });
       }
+      // "…to all opponents" / "…to a random opponent" override the chosen target.
+      if (effect.target === 'allEnemies') return (ctx) => ({ type: 'DealDamageToAll', self: ctx.self, amount });
+      if (effect.target === 'randomEnemy') return (ctx) => ({ type: 'DealDamageToRandomEnemy', self: ctx.self, amount });
       return (ctx) => ({ type: 'DealDamage', target: ctx.target, amount });
     case 'gain':
       if (effect.scale) {
@@ -91,9 +103,9 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
     case 'double':
       return (ctx) => ({ type: 'SetCloudsPlayTwice', target: ctx.self, value: true });
     case 'add':
-      return effect.noun === 'moltDrawTop'
-        ? (ctx) => ({ type: 'AddMoltToDrawTop', owner: ctx.self })
-        : (ctx) => ({ type: 'AddMoltToHand', owner: ctx.self, count: amount });
+      if (effect.noun === 'moltDrawTop') return (ctx) => ({ type: 'AddMoltToDrawTop', owner: ctx.self });
+      if (effect.noun === 'unplayableHand') return (ctx) => ({ type: 'AddUnplayableToHand', owner: ctx.self, count: amount });
+      return (ctx) => ({ type: 'AddMoltToHand', owner: ctx.self, count: amount });
     case 'return':
       return (ctx) => ({ type: 'ReturnCardToHand', owner: ctx.self, cardId: ctx.sourceCard });
     case 'shuffle':
@@ -119,6 +131,14 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       if (effect.noun === 'minion') return (ctx) => ({ type: 'DiscardMinion', owner: ctx.self, count: amount });
       if (effect.noun === 'hand') return (ctx) => ({ type: 'DiscardHand', owner: ctx.self });
       return (ctx) => ({ type: 'DiscardCards', owner: ctx.self, count: amount });
+    case 'burn':
+      return effect.noun === 'all'
+        ? (ctx) => ({ type: 'BurnCards', owner: ctx.self })
+        : (ctx) => ({ type: 'BurnCards', owner: ctx.self, count: effect.amount ?? 1 });
+    case 'find':
+      return (ctx) => ({ type: 'FindDraw', owner: ctx.self, count: amount });
+    case 'set':
+      return (ctx) => ({ type: 'SetBravery', target: ctx.self, amount });
     case 'venom':
       return (ctx) => ({ type: 'Venom', self: ctx.self, target: ctx.target });
     case 'drink':

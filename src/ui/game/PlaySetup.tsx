@@ -6,8 +6,8 @@ import { BattleScreen } from '@ui/game/BattleScreen';
 
 /**
  * PlaySetup — the light pre-battle flow: pick a character, keep 1 of 3 relics,
- * then drop into the battle. (Cloud, Wizard and Crab have authored cards today;
- * the Old Lady and the Writer come later.)
+ * then drop into the battle. (Cloud, Wizard, Crab and Writer have authored
+ * cards today; the Old Lady comes later.)
  */
 type PlayChar = PlayableCharacter;
 
@@ -16,6 +16,7 @@ const SIGNATURE_RELIC: Partial<Record<PlayChar, string>> = {
   cloud: 'lightning-rod',
   wizard: 'vial',
   crab: 'seashell',
+  writer: 'gel-pen',
 };
 
 export function PlaySetup({ onExit }: { onExit: () => void }) {
@@ -28,7 +29,7 @@ export function PlaySetup({ onExit }: { onExit: () => void }) {
     return (
       <SetupShell title="Choose your wanderer" onBack={onExit}>
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
-          {(['cloud', 'wizard', 'crab'] as PlayChar[]).map((id) => (
+          {(Object.keys(CHARACTERS) as PlayChar[]).filter((id) => CHARACTERS[id].playable).map((id) => (
             <CharacterCard key={id} id={id} onPick={() => setCharacter(id)} />
           ))}
         </div>

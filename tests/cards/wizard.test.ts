@@ -84,7 +84,9 @@ describe('scaling the resource verbs', () => {
     });
     const { state: after } = playFromHand(state, TEST_SELF, 1);
     expect(after.player.poison).toBe(8);
-    expect(after.player.hand).toHaveLength(0);
+    // The emptied hand triggers the run-out-of-cards refill, which reshuffles
+    // the two discarded cards straight back — the board stays empty, though.
+    expect(after.player.hand).toHaveLength(2);
     expect(after.player.minions).toHaveLength(0);
   });
 });

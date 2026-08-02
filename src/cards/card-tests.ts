@@ -36,6 +36,7 @@ import {
   CRYSTAL_BALL,
   HURL,
 } from '@cards/definitions/wizard';
+import { PEN_STAB, QUILL, PODCAST, BRAIN_STORM, TROPHY, TYPE, NOTES } from '@cards/definitions/writer';
 
 /** A stand-in minion for setups that need one already in play. */
 const dummyMinion = (cardId: CardId): MinionState => ({ id: entityId('minion-seed'), cardId });
@@ -180,6 +181,56 @@ export const CARD_TESTS: readonly CardTest[] = [
     cardId: ALCHEMY.id,
     setup: {},
     expect: { player: { minions: 1, poison: 1 } },
+  },
+
+  // --- Writer ----------------------------------------------------------------
+  {
+    name: 'Pen Stab deals 3 and gains 1 energy',
+    cardId: PEN_STAB.id,
+    setup: { target: { hp: 30, maxHp: 30 } },
+    expect: { target: { hp: 27 }, player: { energy: 1 } },
+  },
+  {
+    name: 'Quill gains 4 shields then 1 bravery (no boost at 0 bravery)',
+    cardId: QUILL.id,
+    setup: {},
+    expect: { player: { shield: 4, bravery: 1 } },
+  },
+  {
+    name: "Quill's shields are boosted by Bravery already held",
+    cardId: QUILL.id,
+    setup: { player: { bravery: 2 } },
+    expect: { player: { shield: 6, bravery: 3 } }, // 4 + 2 bravery
+  },
+  {
+    name: 'Podcast banks bravery first, so its own shield is boosted',
+    cardId: PODCAST.id,
+    setup: {},
+    expect: { player: { bravery: 2, shield: 3 } }, // 1 + the 2 bravery just gained
+  },
+  {
+    name: 'Brain Storm converts bravery to damage and zeroes it',
+    cardId: BRAIN_STORM.id,
+    setup: { player: { bravery: 5 }, target: { hp: 30, maxHp: 30 } },
+    expect: { target: { hp: 25 }, player: { bravery: 0 } },
+  },
+  {
+    name: 'Trophy burns 2 unplayable cards from hand and heals 3',
+    cardId: TROPHY.id,
+    setup: { player: { hp: 40, maxHp: 50, hand: [NOTES.id, NOTES.id] } },
+    expect: { player: { hp: 43 }, handSize: 0, discardPileSize: 2 },
+  },
+  {
+    name: 'Type finds 2 — the rider fires when an Unplayable card comes up',
+    cardId: TYPE.id,
+    setup: { drawPile: [NOTES.id, 'x'] as CardId[], target: { hp: 30, maxHp: 30 } },
+    expect: { target: { hp: 28 }, handSize: 2, drawPileSize: 0 },
+  },
+  {
+    name: "Type's rider stays quiet when nothing Unplayable is found",
+    cardId: TYPE.id,
+    setup: { drawPile: ['x', 'y'] as CardId[], target: { hp: 30, maxHp: 30 } },
+    expect: { target: { hp: 30 }, handSize: 2 },
   },
 ];
 

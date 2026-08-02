@@ -14,8 +14,9 @@ Rules clarifications (decided; also in `docs/vision.md`):
 - Energy: start each turn with 1 energy; cards cost 1 by default (baseline = one card/turn; energy cards
   let you play more).
 - Enemies play like players — opponents run the same card system, not scripted intents.
-- No turn limit; "~10 turns" is just a typical match length. Running out of cards reshuffles the discard
-  (no deckout loss). You win by taking the opponent to 0 HP.
+- No turn limit; "~10 turns" is just a typical match length. Running out of cards = your hand hitting
+  zero: the moment it does, draw 3 new cards (Brain in a Jar: 4), reshuffling the discard into the
+  draw pile as needed (no deckout loss). You win by taking the opponent to 0 HP.
 - Cloud cap is 3: creating more clouds than that replaces existing ones (the player picks which to drop, one at a time; the AI drops its oldest). "Increase Max Clouds" cards would raise this cap (not yet wired to those cards).
 - The 3 offered relics are drawn from both the general pool and the character's pool.
 

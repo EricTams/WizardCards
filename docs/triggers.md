@@ -49,6 +49,12 @@ Persistents react from the play area and minions replay from the board, but the 
 
 The distinction is load-bearing rather than cosmetic. Playing a card moves it to the discard pile through the very same event, so firing on `play` would play every Molt card **twice**; and the mulligan is a setup step, where a Molt card would otherwise resolve before turn 1. The same rule governs the `cardsDiscardedThisTurn` counter, which only `discard` increments.
 
+### Burn — the Writer's Molt-shaped cousin
+
+**Unplayable** cards react the same way Molt cards do — from the hand, as they leave it — but on their own event. `BurnCards` moves the copies to the discard pile and raises **`CardsBurned`** (not `CardsDiscarded`: a burn must not set off Molt or bump the per-turn discard count), and `burnTriggers` (`src/cards/match/burn.ts`) is the third source `reactiveTriggers` folds into the cascade: every burned card plays its full effects for free — the design's "trigger all effects on them". Persistents key off the same event ("when you burn an unplayable card" — Ink), counted per burned copy.
+
+Selection happens **in the reducer** — leftmost Unplayable copies first, all of them when the action carries no count — which is why `CardInstance.unplayable` covers printed and granted Unplayable alike (see `docs/card-dsl.md` on stamping). Burn is also a **cost**: `canPlayAt` refuses a Burn card unless the hand holds enough Unplayable cards, and the AI's `validPlays` uses the same gate so it can never pick a play the engine then rejects.
+
 **Minion replay is announced.** Replaying a minion is orchestrated by the cards layer, not by an action, so it would otherwise be invisible to triggers. `runTurnCascade` runs a `NoteMinionReplayed` bookkeeping action before each pass, raising a `MinionReplayed` event that "when a minion is replayed" (Juggle) keys off — including the extra passes Protect the Drinks adds. `NoteCardPlayed` does the same job for the per-turn cards-played count.
 
 ### Phase — start / end of turn

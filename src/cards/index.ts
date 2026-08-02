@@ -53,6 +53,7 @@ export {
   newBattle,
   confirmMulligan,
   playFromHand,
+  canPlayAt,
   endPlayerTurn,
   endPlayerPhase,
   beginEnemyTurn,

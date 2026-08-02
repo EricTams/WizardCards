@@ -123,8 +123,10 @@ describe('playing cards', () => {
     const { state: after } = playFromHand(state, PLAYER_ID, 0, ENEMY_ID);
     expect(after.enemies[0]!.hp).toBe(6); // Shine deals 6
     expect(after.player.energy).toBe(0);
-    expect(after.player.hand).toHaveLength(0);
-    expect(cardIdsOf(after.player.discardPile)).toContain(SHINE.id);
+    // It was the last card, so "run out of cards" reshuffles the discard and
+    // refills the hand — Shine comes right back rather than sitting discarded.
+    expect(cardIdsOf(after.player.hand)).toEqual([SHINE.id]);
+    expect(after.player.discardPile).toHaveLength(0);
   });
 
   it('refuses a card the actor cannot afford', () => {
@@ -170,7 +172,10 @@ describe('random enemy AI (enemyPlayOne)', () => {
     expect(r).not.toBeNull();
     expect(r!.cardId).toBe(SHINE.id);
     expect(r!.state.player.hp).toBeLessThan(20); // hit the player
-    expect(r!.state.enemies[0]!.hand).toHaveLength(0); // card left hand
+    // The enemy ran out of cards; the refill hands its only card back — the
+    // rule is symmetric, enemies play like players.
+    expect(cardIdsOf(r!.state.enemies[0]!.hand)).toEqual([SHINE.id]);
+    expect(r!.state.enemies[0]!.discardPile).toHaveLength(0);
   });
 
   it('returns null when nothing is affordable', () => {

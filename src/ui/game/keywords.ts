@@ -98,8 +98,28 @@ export const GLOSSARY: readonly KeywordDef[] = [
   },
   {
     term: 'Bravery',
-    description: 'The first Block card you play gives this much additional Block.',
+    description: 'The first Block or Shield you gain each turn is increased by your Bravery (it is not spent).',
     match: ['bravery'],
+  },
+  {
+    term: 'Molt',
+    description: 'When this card is discarded, it plays for free.',
+    match: ['molt'],
+  },
+  {
+    term: 'Unplayable',
+    description: 'Cannot be played from your hand — but its effects still happen when it is Burned.',
+    match: ['unplayable'],
+  },
+  {
+    term: 'Burn',
+    description: 'Spend that many Unplayable cards from your hand (they go to the discard pile), triggering all effects on them. You need enough Unplayable cards in hand to play a Burn card.',
+    match: ['burn'],
+  },
+  {
+    term: 'Find',
+    description: 'Draw that many cards, keeping everything drawn. If an Unplayable card came up, the "if you find…" bonus happens.',
+    match: ['find'],
   },
 ];
 

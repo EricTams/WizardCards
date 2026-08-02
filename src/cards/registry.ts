@@ -12,6 +12,8 @@ import { CLOUD_PERSISTENTS } from '@cards/definitions/cloud-persistents';
 import { WIZARD_PERSISTENTS } from '@cards/definitions/wizard-persistents';
 import { CRAB_CARDS } from '@cards/definitions/crab';
 import { CRAB_PERSISTENTS } from '@cards/definitions/crab-persistents';
+import { WRITER_CARDS } from '@cards/definitions/writer';
+import { WRITER_PERSISTENTS } from '@cards/definitions/writer-persistents';
 
 export interface CardDef {
   readonly id: CardId;
@@ -27,12 +29,18 @@ export interface CardDef {
  * differently — they have no immediate on-play effect; their trigger text drives
  * behavior while they're in play (see `src/cards/match`).
  */
-export const PERSISTENT_CARDS: readonly CardDef[] = [...CLOUD_PERSISTENTS, ...WIZARD_PERSISTENTS, ...CRAB_PERSISTENTS];
+export const PERSISTENT_CARDS: readonly CardDef[] = [
+  ...CLOUD_PERSISTENTS,
+  ...WIZARD_PERSISTENTS,
+  ...CRAB_PERSISTENTS,
+  ...WRITER_PERSISTENTS,
+];
 
 export const ALL_CARDS: readonly CardDef[] = [
   ...CLOUD_CARDS,
   ...WIZARD_CARDS,
   ...CRAB_CARDS,
+  ...WRITER_CARDS,
   ...PERSISTENT_CARDS,
 ];
 

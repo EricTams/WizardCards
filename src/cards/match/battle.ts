@@ -28,8 +28,9 @@ import { entityId, type CardId, type EntityId } from '@shared/index';
 import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
 import type { PlayContext } from '@cards/dsl/resolver';
-import { runWithTriggers, runTurnCascade, startTurn, endTurn, type RunResult } from '@cards/match/index';
+import { runWithTriggers, runTurnCascade, startTurn, endTurn, settleHandRefills, type RunResult } from '@cards/match/index';
 import { BASE_ENERGY, BASE_MAX_HP, DECK_SIZE, cloudCapFor, CHARACTERS, enemyDeck, getRelic } from '@cards/match/content';
+import { burnCostOf, stampPrintedKeywords } from '@cards/match/burn';
 
 export const OPENING_HAND = 5;
 export const OPENING_DISCARD = 2;
@@ -133,9 +134,12 @@ export function newBattle(opts: BattleOptions): GameState {
   rng = eDeck.state;
 
   // Wrap both decks as card *instances*, numbering them from a shared counter so
-  // every copy in the battle has a unique, deterministic uid.
+  // every copy in the battle has a unique, deterministic uid. Printed keywords
+  // the engine must see (Unplayable) are stamped onto the copies here.
   const pInst = instancesOf(pDeck.deck, 0);
   const eInst = instancesOf(eDeck.value, pInst.idSeq);
+  const pCards = stampPrintedKeywords(pInst.cards);
+  const eCards = stampPrintedKeywords(eInst.cards);
 
   const bonusHp = relic?.bonusMaxHp ?? 0;
   const player = makeCombatant({
@@ -145,7 +149,7 @@ export function newBattle(opts: BattleOptions): GameState {
     hp: BASE_MAX_HP + bonusHp,
     maxHp: BASE_MAX_HP + bonusHp,
     energy: BASE_ENERGY,
-    drawPile: pInst.cards,
+    drawPile: pCards,
   });
   const enemy = makeCombatant({
     id: ENEMY_ID,
@@ -154,7 +158,7 @@ export function newBattle(opts: BattleOptions): GameState {
     hp: BASE_MAX_HP,
     maxHp: BASE_MAX_HP,
     energy: BASE_ENERGY,
-    drawPile: eInst.cards,
+    drawPile: eCards,
   });
 
   let state: GameState = { ...base, rng, idSeq: eInst.idSeq, phase: 'setup', turn: 0, player, enemies: [enemy] };
@@ -207,7 +211,7 @@ export function playFromHand(
   const instance = actor?.hand[handIndex];
   const cardId = instance?.cardId;
   const card = cardId ? getCard(cardId) : undefined;
-  if (!actor || !cardId || !card || actor.energy < card.cost) return { state, events: [] };
+  if (!actor || !cardId || !card || !canPlayAt(actor, handIndex)) return { state, events: [] };
 
   const target = targetId ?? opponentsOf(state, actorId)[0]?.id ?? actorId;
   let cur = state;
@@ -228,6 +232,11 @@ export function playFromHand(
     const ctx: PlayContext = { self: actorId, target, sourceCard: cardId };
     run(compiled.value.map((produce) => produce(ctx)));
   }
+  // The card has fully resolved; if it emptied a hand, "run out of cards"
+  // refills now (playing your last card counts — see settleHandRefills).
+  const settled = settleHandRefills(cur);
+  cur = settled.state;
+  events.push(...settled.events);
   const outcome = outcomeAction(cur);
   if (outcome) run([outcome]);
   return { state: cur, events };
@@ -262,12 +271,30 @@ export function capClouds(state: GameState, ownerId: EntityId): RunResult {
   return { state: s, events };
 }
 
+/**
+ * Can `actor` legally play the card at `index` right now? Energy, the
+ * Unplayable keyword, and Burn costs all gate it. Shared by `playFromHand`, the
+ * AI's `validPlays`, and the UI's hand display, so they can never disagree —
+ * an AI offered a play the engine then refuses would loop.
+ */
+export function canPlayAt(actor: Combatant, index: number): boolean {
+  const instance = actor.hand[index];
+  const card = instance ? getCard(instance.cardId) : undefined;
+  if (!instance || !card) return false;
+  if (actor.energy < card.cost) return false;
+  // Unplayable: never from hand — Burn spends it instead.
+  if (instance.unplayable) return false;
+  // Burn is a cost (Highlighter: "…does not COST unplayable cards to play"):
+  // without enough Unplayable cards in hand, the card can't be played.
+  const cost = burnCostOf(card);
+  return cost === 0 || actor.hand.filter((i) => i.unplayable).length >= cost;
+}
+
 /** Hand indices a combatant may legally play right now (in hand + affordable). */
 function validPlays(actor: Combatant): number[] {
   const idxs: number[] = [];
   for (let i = 0; i < actor.hand.length; i++) {
-    const card = getCard(actor.hand[i]!.cardId);
-    if (card && actor.energy >= card.cost) idxs.push(i);
+    if (canPlayAt(actor, i)) idxs.push(i);
   }
   return idxs;
 }

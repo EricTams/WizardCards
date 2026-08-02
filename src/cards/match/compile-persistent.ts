@@ -107,6 +107,13 @@ function firingCount(trigger: TriggerNode, state: GameState, event: GameEvent): 
         const card = getCard(inst.cardId);
         return card ? hasMolt(card) : false;
       }).length;
+    // The Writer's events carry an owner, and a persistent is the player's —
+    // fire only for the player's own burns/draws, not an enemy Writer's.
+    case 'burnCard':
+      return event.type === 'CardsBurned' && event.owner === state.player.id ? event.instances.length : 0;
+    case 'drawUnplayableCard':
+      if (event.type !== 'CardsDrawn' || event.owner !== state.player.id) return 0;
+      return event.instances.filter((inst) => inst.unplayable === true).length;
     default:
       return 0;
   }
@@ -153,9 +160,15 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
     case 'move':
       return [{ type: 'MoveDiscardToDrawPile', owner: self, count: amount }];
     case 'add':
-      return effect.noun === 'moltDrawTop'
-        ? [{ type: 'AddMoltToDrawTop', owner: self }]
-        : [{ type: 'AddMoltToHand', owner: self, count: amount }];
+      if (effect.noun === 'moltDrawTop') return [{ type: 'AddMoltToDrawTop', owner: self }];
+      if (effect.noun === 'unplayableHand') return [{ type: 'AddUnplayableToHand', owner: self, count: amount }];
+      return [{ type: 'AddMoltToHand', owner: self, count: amount }];
+    case 'burn':
+      return effect.noun === 'all' ? [{ type: 'BurnCards', owner: self }] : [{ type: 'BurnCards', owner: self, count: effect.amount ?? 1 }];
+    case 'find':
+      return [{ type: 'FindDraw', owner: self, count: amount }];
+    case 'set':
+      return [{ type: 'SetBravery', target: self, amount }];
     case 'retain':
       return [{ type: 'SetVenomRetains', target: self, value: true }];
     case 'remove':

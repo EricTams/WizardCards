@@ -200,7 +200,7 @@ describe('moving cards between piles', () => {
 
   it('Tentacles goes back into the draw pile instead of the discard', () => {
     const state = buildTestState({
-      player: { energy: 5, hand: [TENTACLES.id], drawPile: ['a', 'b'] as CardId[] },
+      player: { energy: 5, hand: [TENTACLES.id, 'z' as CardId], drawPile: ['a', 'b'] as CardId[] },
       target: { hp: 30, maxHp: 30 },
     });
     const { state: after } = playFromHand(state, TEST_SELF, 0);
@@ -212,7 +212,7 @@ describe('moving cards between piles', () => {
 
   it('Crab Walk mills 3 off the draw pile — which is not a hand discard', () => {
     const state = buildTestState({
-      player: { energy: 5, hand: [CRAB_WALK.id], drawPile: ['a', 'b', 'c', 'd', 'e'] as CardId[] },
+      player: { energy: 5, hand: [CRAB_WALK.id, 'z' as CardId], drawPile: ['a', 'b', 'c', 'd', 'e'] as CardId[] },
     });
     const { state: after } = playFromHand(state, TEST_SELF, 0);
     expect(after.player.drawPile).toHaveLength(2);
@@ -223,7 +223,7 @@ describe('moving cards between piles', () => {
 
   it('Dry Out recycles a card out of the discard pile', () => {
     const state = buildTestState({
-      player: { energy: 5, hand: [DRY_OUT.id], discardPile: ['a', 'b'] as CardId[], drawPile: [] },
+      player: { energy: 5, hand: [DRY_OUT.id, 'z' as CardId], discardPile: ['a', 'b'] as CardId[], drawPile: [] },
     });
     const { state: after } = playFromHand(state, TEST_SELF, 0);
     expect(after.player.shield).toBe(4);
@@ -335,7 +335,7 @@ describe('granted Molt — the per-copy mark', () => {
       player: {
         energy: 5,
         persistents: [DECORATOR.id],
-        hand: [CRAB_WALK.id],
+        hand: [CRAB_WALK.id, 'z' as CardId],
         drawPile: ['a', 'b', 'c', 'd'] as CardId[],
       },
     });

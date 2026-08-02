@@ -4,6 +4,7 @@ import {
   confirmMulligan,
   randomMatchup,
   playFromHand,
+  canPlayAt,
   endPlayerPhase,
   beginEnemyTurn,
   enemyPlayOne,
@@ -64,6 +65,8 @@ const THEME_BG: Record<string, string> = {
   field: 'linear-gradient(to bottom, #7fc3ff 0%, #7fc3ff 30%, #5aa84a 30%, #4f9a41 100%)',
   chamber: 'linear-gradient(to bottom, #2d2260 0%, #2d2260 28%, #6b62c6 28%, #5a51b0 100%)',
   beach: 'linear-gradient(to bottom, #4a90c2 0%, #4a90c2 24%, #e3b476 24%, #d6a463 100%)',
+  // The Writer's study: warm lamplight over a paper-strewn desk.
+  study: 'linear-gradient(to bottom, #4a3728 0%, #4a3728 26%, #c9a86a 26%, #b8945a 100%)',
 };
 
 export function BattleScreen({ options, onExit, auto = false }: BattleScreenProps) {
@@ -320,8 +323,14 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     if (!isPlayerTurn || overCap || !enemy) return;
     const cardId = player.hand[index]!.cardId;
     const card = getCard(cardId);
-    if (!card || player.energy < card.cost) {
-      setLog(`Not enough energy for ${card?.name ?? 'that'}.`);
+    if (!card || !canPlayAt(player, index)) {
+      // Energy, an Unplayable card, or an unmet Burn cost — same gate the engine uses.
+      const why = player.hand[index]!.unplayable
+        ? `${card?.name ?? 'That'} is Unplayable — Burn it instead.`
+        : card && player.energy < card.cost
+          ? `Not enough energy for ${card.name}.`
+          : `${card?.name ?? 'That'} needs Unplayable cards in hand to Burn.`;
+      setLog(why);
       return;
     }
     // If the card attacks and the enemy has minions (decoys), let the player pick
@@ -492,6 +501,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
       <Hand
         hand={cardIdsOf(player.hand)}
         energy={player.energy}
+        playable={player.hand.map((_, i) => canPlayAt(player, i))}
         phase={state.phase}
         mullPicks={mullPicks}
         locked={auto || animating}
@@ -842,6 +852,7 @@ function EnergyPips({ energy }: { energy: number }) {
 function Hand({
   hand,
   energy,
+  playable,
   phase,
   mullPicks,
   locked = false,
@@ -852,6 +863,8 @@ function Hand({
 }: {
   hand: readonly CardId[];
   energy: number;
+  /** Per-index legality from `canPlayAt` (energy + Unplayable + Burn costs). */
+  playable?: readonly boolean[];
   phase: GameState['phase'];
   mullPicks: number[];
   locked?: boolean;
@@ -885,7 +898,8 @@ function Hand({
       {hand.map((id, i) => {
         const card = getCard(id);
         const picked = mullPicks.includes(i);
-        const affordable = phase !== 'playerTurn' || (card ? energy >= card.cost : false);
+        const affordable =
+          phase !== 'playerTurn' || (playable ? playable[i] === true : card ? energy >= card.cost : false);
         return (
           <HandCard
             key={`${id}-${i}`}

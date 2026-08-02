@@ -291,6 +291,66 @@ export interface AddMoltToDrawTop {
   readonly owner: EntityId;
 }
 
+/**
+ * Grant Unplayable to `count` cards in hand (Trash Can). Like AddMoltToHand the
+ * mark lands on the copies; unlike it, printed Unplayable is stamped onto copies
+ * too (the reducer needs the flag to select Burn targets), so this correctly
+ * skips cards that are already Unplayable either way.
+ */
+export interface AddUnplayableToHand {
+  readonly type: 'AddUnplayableToHand';
+  readonly owner: EntityId;
+  readonly count: number;
+}
+
+/**
+ * Burn — the Writer's mechanic: move Unplayable cards from `owner`'s hand to the
+ * discard pile, leftmost first. Emits `CardsBurned`; the cards layer then plays
+ * each burned card's effects for free (see `src/cards/match/burn.ts`). Omitting
+ * `count` burns every Unplayable card in hand (Inspiration).
+ */
+export interface BurnCards {
+  readonly type: 'BurnCards';
+  readonly owner: EntityId;
+  readonly count?: number;
+}
+
+/**
+ * Find — draw `count` cards exactly like DrawCards, then record how many of the
+ * drawn copies were Unplayable in `unplayablesFound`, which the card's
+ * "If you find an unplayable card, …" riders read (`IfFoundUnplayable`).
+ */
+export interface FindDraw {
+  readonly type: 'FindDraw';
+  readonly owner: EntityId;
+  readonly count: number;
+}
+
+/**
+ * Apply the inner action only if `owner`'s last Find drew at least one
+ * Unplayable card. The inner action is plain data, so the whole thing stays
+ * serializable and replayable.
+ */
+export interface IfFoundUnplayable {
+  readonly type: 'IfFoundUnplayable';
+  readonly owner: EntityId;
+  readonly action: Action;
+}
+
+/** Set a combatant's Bravery to an exact value (Brain Storm's "set to zero"). */
+export interface SetBravery {
+  readonly type: 'SetBravery';
+  readonly target: EntityId;
+  readonly amount: number;
+}
+
+/** Deal `amount` damage to every living opponent of `self` (Junk, Rusty Knife). */
+export interface DealDamageToAll {
+  readonly type: 'DealDamageToAll';
+  readonly self: EntityId;
+  readonly amount: number;
+}
+
 /** Discard every minion a combatant has in play (Explosion). */
 export interface DiscardAllMinions {
   readonly type: 'DiscardAllMinions';
@@ -328,6 +388,13 @@ export interface RemoveAllClouds {
 /** Widen a combatant's cloud cap by `amount` slots, for the rest of the battle. */
 export interface IncreaseMaxClouds {
   readonly type: 'IncreaseMaxClouds';
+  readonly target: EntityId;
+  readonly amount: number;
+}
+
+/** Raise the run-out-of-cards refill draw by `amount` (Brain in a Jar: 4 not 3). */
+export interface IncreaseRefillDraw {
+  readonly type: 'IncreaseRefillDraw';
   readonly target: EntityId;
   readonly amount: number;
 }
@@ -402,6 +469,7 @@ export type Action =
   | DiscardHand
   | RemoveAllClouds
   | IncreaseMaxClouds
+  | IncreaseRefillDraw
   | CreateRandomClouds
   | RemoveRandomClouds
   | FillCloudSlots
@@ -417,6 +485,12 @@ export type Action =
   | DiscardFromDrawPile
   | MoveDiscardToDrawPile
   | AddMoltToHand
-  | AddMoltToDrawTop;
+  | AddMoltToDrawTop
+  | AddUnplayableToHand
+  | BurnCards
+  | FindDraw
+  | IfFoundUnplayable
+  | SetBravery
+  | DealDamageToAll;
 
 export type ActionType = Action['type'];
