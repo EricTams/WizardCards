@@ -13,6 +13,8 @@ import { CLOUD_CARDS, CLOUD_ZAP, SUN_RAY, CRISSCROSS, SHINE, RAIN, HAZE, CLEANSE
 import { WIZARD_CARDS } from '@cards/definitions/wizard';
 import { CRAB_CARDS } from '@cards/definitions/crab';
 import { WRITER_CARDS } from '@cards/definitions/writer';
+import { OLD_LADY_CARDS } from '@cards/definitions/old-lady';
+import { KNIGHT_CARDS } from '@cards/definitions/knight';
 
 /** Base energy every combatant starts each turn with (design: "start with 1"). */
 export const BASE_ENERGY = 1;
@@ -48,13 +50,13 @@ export interface CharacterDef {
   /** The ~40-card pool a 20-card deck is drawn from (authored subset today). */
   readonly pool: readonly CardDef[];
   /** Background theme key the battle screen uses (the CSS fallback for level art). */
-  readonly theme: 'field' | 'chamber' | 'beach' | 'study';
+  readonly theme: 'field' | 'chamber' | 'beach' | 'study' | 'parlour' | 'keep';
   /** False until the character has authored cards + art. */
   readonly playable: boolean;
 }
 
-/** The characters with an authored pool. `playable` gates the ones with art. */
-export const CHARACTERS: Record<'cloud' | 'wizard' | 'crab' | 'writer', CharacterDef> = {
+/** Every character with an authored pool. `playable` gates the ones with art. */
+export const CHARACTERS: Record<'cloud' | 'wizard' | 'crab' | 'writer' | 'oldLady' | 'knight', CharacterDef> = {
   cloud: {
     id: 'cloud',
     name: 'The Cloud',
@@ -86,6 +88,23 @@ export const CHARACTERS: Record<'cloud' | 'wizard' | 'crab' | 'writer', Characte
     pool: WRITER_CARDS,
     theme: 'study',
     playable: true,
+  },
+  oldLady: {
+    id: 'oldLady',
+    name: 'The Old Lady',
+    blurb: 'Weak attacks, huge Power — and Blank cards that make a fistful of Adds free.',
+    pool: OLD_LADY_CARDS,
+    theme: 'parlour',
+    playable: true,
+  },
+  knight: {
+    id: 'knight',
+    name: 'The Knight',
+    blurb: 'Marks the cards in your hand, so every play carries a second effect.',
+    pool: KNIGHT_CARDS,
+    theme: 'keep',
+    // Authored but not offered: the Knight has no card or hero art yet.
+    playable: false,
   },
 };
 
@@ -223,6 +242,15 @@ export const RELICS: readonly RelicDef[] = [
     name: 'Earring',
     text: 'Start combat with 2 Power.',
     onCombatStart: (o) => [{ type: 'GainPower', target: o, amount: 2 }],
+  },
+  // --- Knight ----------------------------------------------------------------
+  {
+    id: 'candle',
+    name: 'Candle',
+    text: 'A random card in your starting hand is Marked with Flaming 2.',
+    onCombatStart: (o) => [
+      { type: 'MarkCards', owner: o, mark: 'flaming', value: 2, count: 1, scope: 'random' },
+    ],
   },
 ];
 

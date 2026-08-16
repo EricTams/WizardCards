@@ -47,6 +47,8 @@ import {
   CHEATER,
   GAMBLE_IT_ALL,
 } from '@cards/definitions/writer';
+import { SMOKE_BOMB, EVIL_GLARE, MEND, DASH, PAPER, AIR, SHARP_STRIKE } from '@cards/definitions/old-lady';
+import { BEHEAD, PLATE, HELMET } from '@cards/definitions/knight';
 
 /** A stand-in minion for setups that need one already in play. */
 const dummyMinion = (cardId: CardId): MinionState => ({ id: entityId('minion-seed'), cardId });
@@ -255,6 +257,45 @@ export const CARD_TESTS: readonly CardTest[] = [
     expect: { player: { bravery: 6, block: 0, shield: 0 } },
   },
 
+  // --- Old Lady --------------------------------------------------------------
+  {
+    name: 'Smoke Bomb pays 1 HP for power, shields and a hit',
+    cardId: SMOKE_BOMB.id,
+    setup: { player: { hp: 40, maxHp: 50 }, target: { hp: 30, maxHp: 30 } },
+    expect: { player: { hp: 39, shield: 4, power: 2 }, target: { hp: 27 } },
+  },
+  {
+    name: 'Power adds to the first attack of the turn, once',
+    cardId: EVIL_GLARE.id,
+    setup: { player: { hp: 40, maxHp: 50, power: 3 }, target: { hp: 30, maxHp: 30 } },
+    expect: { player: { hp: 39, power: 3 }, target: { hp: 22 } }, // 5 + 3 power
+  },
+  {
+    name: 'Mend spends all Power as healing',
+    cardId: MEND.id,
+    setup: { player: { hp: 40, maxHp: 50, power: 4 } },
+    expect: { player: { hp: 44, power: 0, energy: 1 } },
+  },
+  {
+    name: 'Dash reads the Blank cards in hand',
+    cardId: DASH.id,
+    setup: { hand: [PAPER.id, AIR.id, SHARP_STRIKE.id] },
+    expect: { player: { power: 2 } },
+  },
+
+  // --- Knight ----------------------------------------------------------------
+  {
+    name: 'Behead marks the two leftmost cards in hand',
+    cardId: BEHEAD.id,
+    setup: { hand: [HELMET.id, HELMET.id, HELMET.id] },
+    expect: { handSize: 3 },
+  },
+  {
+    name: 'Plate wipes the markings, then puts one big Flaming back',
+    cardId: PLATE.id,
+    setup: { hand: [HELMET.id, HELMET.id] },
+    expect: { handSize: 2 },
+  },
 ];
 
 /** All tests targeting a given card id (used by the Card Lab and the suite). */

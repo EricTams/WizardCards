@@ -6,7 +6,8 @@ import { BattleScreen } from '@ui/game/BattleScreen';
 
 /**
  * PlaySetup — the light pre-battle flow: pick a character, keep 1 of 3 relics,
- * then drop into the battle. Only characters flagged `playable` are offered.
+ * then drop into the battle. Only characters flagged `playable` are offered;
+ * the Knight is authored but has no art yet.
  */
 type PlayChar = PlayableCharacter;
 
@@ -16,6 +17,8 @@ const SIGNATURE_RELIC: Partial<Record<PlayChar, string>> = {
   wizard: 'vial',
   crab: 'seashell',
   writer: 'notebook',
+  oldLady: 'earring',
+  knight: 'candle',
 };
 
 export function PlaySetup({ onExit }: { onExit: () => void }) {

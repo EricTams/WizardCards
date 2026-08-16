@@ -14,6 +14,10 @@ import { CRAB_CARDS } from '@cards/definitions/crab';
 import { CRAB_PERSISTENTS } from '@cards/definitions/crab-persistents';
 import { WRITER_CARDS } from '@cards/definitions/writer';
 import { WRITER_PERSISTENTS } from '@cards/definitions/writer-persistents';
+import { OLD_LADY_CARDS } from '@cards/definitions/old-lady';
+import { OLD_LADY_PERSISTENTS } from '@cards/definitions/old-lady-persistents';
+import { KNIGHT_CARDS } from '@cards/definitions/knight';
+import { KNIGHT_PERSISTENTS } from '@cards/definitions/knight-persistents';
 
 export interface CardDef {
   readonly id: CardId;
@@ -34,6 +38,8 @@ export const PERSISTENT_CARDS: readonly CardDef[] = [
   ...WIZARD_PERSISTENTS,
   ...CRAB_PERSISTENTS,
   ...WRITER_PERSISTENTS,
+  ...OLD_LADY_PERSISTENTS,
+  ...KNIGHT_PERSISTENTS,
 ];
 
 export const ALL_CARDS: readonly CardDef[] = [
@@ -41,6 +47,8 @@ export const ALL_CARDS: readonly CardDef[] = [
   ...WIZARD_CARDS,
   ...CRAB_CARDS,
   ...WRITER_CARDS,
+  ...OLD_LADY_CARDS,
+  ...KNIGHT_CARDS,
   ...PERSISTENT_CARDS,
 ];
 
