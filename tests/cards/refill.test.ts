@@ -8,7 +8,7 @@ import type { CardId } from '@shared/index';
 /**
  * "When you run out of cards, draw 3" — the moment a hand hits zero mid-battle
  * (after the emptying step fully resolves), the combatant draws HAND_REFILL
- * cards; Brain in a Jar raises it to 4 via `bonusRefillDraw`.
+ * cards; Brain Jar raises it to 4 via `bonusRefillDraw`.
  */
 describe('run out of cards — the hand refill', () => {
   it('playing your last card draws 3 new ones', () => {
@@ -48,7 +48,7 @@ describe('run out of cards — the hand refill', () => {
     expect(settleHandRefills(state).state.player.hand).toHaveLength(0);
   });
 
-  it('Brain in a Jar: draws 4 instead of 3', () => {
+  it('Brain Jar: draws 4 instead of 3', () => {
     const state = buildTestState({
       player: {
         energy: 1,

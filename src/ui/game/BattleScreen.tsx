@@ -5,6 +5,8 @@ import {
   randomMatchup,
   playFromHand,
   canPlayAt,
+  energyCostAt,
+  burnCostOf,
   resolvePendingChoice,
   endPlayerPhase,
   beginEnemyTurn,
@@ -23,7 +25,17 @@ import {
 import { cardIdsOf, type Combatant, type GameEvent, type GameState, type MinionState, type PendingChoice } from '@engine/index';
 import type { CardId, CloudType, EntityId } from '@shared/index';
 import { Sprite } from '@ui/game/Sprite';
-import { heroSprite, cloudSprite, cardArtUrl, CARD_ART_W, CARD_ART_H, SPRITE_CSS, CARD_POINTER } from '@ui/game/art';
+import {
+  heroSprite,
+  cloudSprite,
+  cardArtUrl,
+  levelArt,
+  persistentIconUrl,
+  CARD_ART_W,
+  CARD_ART_H,
+  SPRITE_CSS,
+  CARD_POINTER,
+} from '@ui/game/art';
 import { describeEvents, nameMap, type LogEntry, type LogSide } from '@ui/game/combatLog';
 import { impactsFromEvents, impactAnchor, sceneAnchor } from '@ui/game/effects';
 import { EffectsLayer, EFFECTS_CSS, type Flyer, type Pop, type StagedCard } from '@ui/game/EffectsLayer';
@@ -60,6 +72,9 @@ const CHARACTER_EMBLEM: Record<string, string> = {
   cloud: '☁',
   wizard: '🔮',
   crab: '🦀',
+  writer: '✒',
+  oldLady: '👵',
+  knight: '⚔',
 };
 
 const THEME_BG: Record<string, string> = {
@@ -312,6 +327,10 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
   // Attract Mode re-rolls the matchup each round, so the two can differ.
   const sceneChar = (state.player.character && CHARACTERS[state.player.character as keyof typeof CHARACTERS]) || character;
   const bg = THEME_BG[sceneChar.theme] ?? THEME_BG.field;
+  // The hand-drawn scene: a backdrop plus the platform the fight stands on (see
+  // `reference/screen mockups`). The gradient stays underneath as the fallback
+  // for any character whose level art is missing.
+  const level = levelArt(sceneChar.id);
 
   function toggleMull(i: number) {
     setMullPicks((p) => (p.includes(i) ? p.filter((x) => x !== i) : p.length < OPENING_DISCARD ? [...p, i] : p));
@@ -329,12 +348,15 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     const cardId = player.hand[index]!.cardId;
     const card = getCard(cardId);
     if (!card || !canPlayAt(player, index)) {
-      // Energy, an Unplayable card, or an unmet Burn cost — same gate the engine uses.
-      const why = player.hand[index]!.unplayable
-        ? `${card?.name ?? 'That'} is Unplayable — Burn it instead.`
-        : card && player.energy < card.cost
-          ? `Not enough energy for ${card.name}.`
-          : `${card?.name ?? 'That'} needs Unplayable cards in hand to Burn.`;
+      // Energy, an Add card outside a Blank window, or an unmet Burn cost —
+      // the same gate the engine uses.
+      const why = player.hand[index]!.add === true
+        ? `${card?.name ?? 'That'} has Add — play a Blank card first.`
+        : card && player.craft < burnCostOf(card)
+          ? `${card.name} burns ${burnCostOf(card)} Craft — you have ${player.craft}.`
+          : card && player.energy < energyCostAt(player, index)
+            ? `Not enough energy for ${card.name}.`
+            : `You can't play ${card?.name ?? 'that'} right now.`;
       setLog(why);
       return;
     }
@@ -368,8 +390,6 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     switch (p.kind) {
       case 'discard':
         return `Choose ${n} card${s} to discard.`;
-      case 'burn':
-        return `Choose ${n} card${s} to burn.`;
       case 'cloud':
         return `Choose ${n} cloud${s} to remove.`;
       case 'minion':
@@ -379,16 +399,12 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     }
   }
 
-  /** A hand click while a discard/burn choice is pending: toggle; the last pick resolves. */
+  /** A hand click while a discard choice is pending: toggle; the last pick resolves. */
   function toggleChoice(index: number) {
     if (!pending || animating) return;
-    if (pending.kind !== 'discard' && pending.kind !== 'burn') return;
+    if (pending.kind !== 'discard') return;
     const inst = player.hand[index];
     if (!inst) return;
-    if (pending.kind === 'burn' && inst.unplayable !== true) {
-      setLog('Only an Unplayable card can be burned.');
-      return;
-    }
     if (choicePicks.includes(index)) {
       setChoicePicks(choicePicks.filter((i) => i !== index));
       return;
@@ -417,7 +433,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     const kind = pending.kind;
     // Hand picks are collected as indices (for the fan's visuals) and converted
     // to uids here; the other kinds collect their final values directly.
-    const values = kind === 'discard' || kind === 'burn' ? picks.map((i) => player.hand[i]!.uid) : picks;
+    const values = kind === 'discard' ? picks.map((i) => player.hand[i]!.uid) : picks;
     const label =
       kind === 'cloud'
         ? `You remove ${picks.length} cloud${picks.length > 1 ? 's' : ''}`
@@ -515,6 +531,30 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
     >
       <style>{SPRITE_CSS + FLOAT_CSS + EFFECTS_CSS}</style>
 
+      {/* The scene, in two painted layers under everything else (DOM order). */}
+      {level && (
+        <>
+          {/* Stretched to fill rather than `cover`: the backdrops are square, and
+              cropping one to a wide viewport throws away the horizon the whole
+              composition is built around. The art is flat stylized shapes, so it
+              takes the stretch without reading as distorted. */}
+          <div style={{ ...sceneLayer, backgroundImage: `url("${level.backdrop}")`, backgroundSize: '100% 100%' }} />
+          <div
+            style={{
+              ...sceneLayer,
+              // The platform's ragged edge sits below the horizon and runs off
+              // the bottom of the screen, so the hand overlaps its front lip.
+              top: '12%',
+              left: '-2%',
+              right: '-2%',
+              bottom: '-8%',
+              backgroundImage: `url("${level.platform}")`,
+              backgroundSize: '100% 100%',
+            }}
+          />
+        </>
+      )}
+
       {/* Top HUD: exit + turn + log */}
       <div style={{ position: 'absolute', top: 10, left: 12, right: 12, display: 'flex', alignItems: 'center', gap: 12, zIndex: 5 }}>
         <button onClick={onExit} style={hudBtn}>
@@ -603,13 +643,14 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
       <Hand
         hand={cardIdsOf(player.hand)}
         energy={player.energy}
-        playable={player.hand.map((inst, i) =>
+        // The badge shows what the card actually costs to play right now: an Add
+        // card inside a Blank window and a Burn card (which pays Craft) are free.
+        costs={player.hand.map((_inst, i) => energyCostAt(player, i))}
+        playable={player.hand.map((_inst, i) =>
           // While choosing, "playable" means "pickable": any card for a
-          // discard, only Unplayable ones for a burn, nothing for the
-          // choices that live outside the hand (clouds/minions/discard pile).
-          pending
-            ? pending.kind === 'discard' || (pending.kind === 'burn' && inst.unplayable === true)
-            : canPlayAt(player, i),
+          // discard, nothing for the choices that live outside the hand
+          // (clouds / minions / discard pile).
+          pending ? pending.kind === 'discard' : canPlayAt(player, i),
         )}
         phase={state.phase}
         mullPicks={pending ? choicePicks : mullPicks}
@@ -649,7 +690,7 @@ export function BattleScreen({ options, onExit, auto = false }: BattleScreenProp
           }}
         >
           <span style={{ ...pill, background: 'rgba(0,0,0,.72)', fontSize: 15 }}>
-            {pending.kind === 'burn' ? '🔥' : pending.kind === 'cloud' ? '☁' : '🗑'} {choicePrompt(pending)} (
+            {pending.kind === 'cloud' ? '☁' : '🗑'} {choicePrompt(pending)} (
             {choicePicks.length}/{pending.count})
           </span>
         </div>
@@ -980,6 +1021,8 @@ function CombatantBadges({ c, align }: { c: Combatant; align: 'left' | 'right' }
   if (c.poison > 0) chips.push(`☠ ${c.poison}`);
   if (c.power > 0) chips.push(`💪 ${c.power}`);
   if (c.bravery > 0) chips.push(`✒ ${c.bravery}`);
+  if (c.craft > 0) chips.push(`✎ ${c.craft}`);
+  if (c.addWindow) chips.push('▢ Add');
   return (
     <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, alignItems: align === 'right' ? 'flex-end' : 'flex-start', minWidth: 160 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'white', fontWeight: 700, textShadow: '0 1px 2px rgba(0,0,0,.6)' }}>
@@ -1000,6 +1043,39 @@ function CombatantBadges({ c, align }: { c: Combatant; align: 'left' | 'right' }
           ))}
         </div>
       )}
+      <PersistentIcons c={c} align={align} />
+    </div>
+  );
+}
+
+/**
+ * The Persistent (ongoing) cards this combatant has in play, as their drawn
+ * status icons. The icon IS the card's identity here, so a persistent with no
+ * icon art falls back to its name — never to a broken image.
+ */
+function PersistentIcons({ c, align }: { c: Combatant; align: 'left' | 'right' }) {
+  if (c.persistents.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
+      {c.persistents.map((id, i) => {
+        const card = getCard(id);
+        const url = card ? persistentIconUrl(c.character, card.name) : '';
+        return url ? (
+          <img
+            key={`${id}-${i}`}
+            src={url}
+            alt={card!.name}
+            title={`${card!.name} — ${card!.text}`}
+            width={32}
+            height={32}
+            style={{ imageRendering: 'pixelated', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,.6))' }}
+          />
+        ) : (
+          <span key={`${id}-${i}`} style={statChip} title={card?.text}>
+            {card?.name ?? String(id)}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -1021,6 +1097,7 @@ function EnergyPips({ energy }: { energy: number }) {
 function Hand({
   hand,
   energy,
+  costs,
   playable,
   phase,
   mullPicks,
@@ -1032,7 +1109,9 @@ function Hand({
 }: {
   hand: readonly CardId[];
   energy: number;
-  /** Per-index legality from `canPlayAt` (energy + Unplayable + Burn costs). */
+  /** Per-index energy cost right now (Add cards in a Blank window, Burn cards: 0). */
+  costs?: readonly number[];
+  /** Per-index legality from `canPlayAt` (energy + Add window + Burn's Craft cost). */
   playable?: readonly boolean[];
   phase: GameState['phase'];
   mullPicks: number[];
@@ -1073,7 +1152,7 @@ function Hand({
           <HandCard
             key={`${id}-${i}`}
             name={card?.name ?? id}
-            cost={card?.cost ?? 0}
+            cost={costs?.[i] ?? card?.cost ?? 0}
             artUrl={card ? cardArtUrl(card) : ''}
             index={i}
             count={hand.length}
@@ -1217,6 +1296,16 @@ const FLOAT_CSS = `
 @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
 .handcard:hover { transform: translateY(-44px) rotate(0deg) !important; z-index: 20; }
 `;
+
+/** A painted scene layer — full-bleed, pixel-crisp, and never clickable. */
+const sceneLayer: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'center',
+  imageRendering: 'pixelated',
+  pointerEvents: 'none',
+};
 
 const pill: React.CSSProperties = {
   color: 'white',

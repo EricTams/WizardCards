@@ -18,7 +18,7 @@
  * Nouns match plural-insensitively. Anything unrecognized yields a Diagnostic
  * with a source span instead of throwing. Pure function, Result out.
  */
-import { type Diagnostic, type Result, ok, err, type CloudType } from '@shared/index';
+import { type Diagnostic, type Result, ok, err, type CloudType, type MarkKind, MARK_KINDS } from '@shared/index';
 import { tokenize, type Token } from '@cards/dsl/tokenizer';
 import type {
   CardScript,
@@ -46,6 +46,7 @@ const CLOUD_TYPES: Record<string, CloudType> = {
 
 const KEYWORDS = new Set<Verb>(['venom', 'drink', 'minion']);
 const TRIGGER_LEADS = new Set(['when', 'whenever', 'at']);
+const MARKS: readonly MarkKind[] = MARK_KINDS;
 
 export function parse(source: string): Result<CardScript, Diagnostic[]> {
   const sentences = splitOn(tokenize(source), SENTENCE_SEP);
@@ -66,10 +67,10 @@ export function parse(source: string): Result<CardScript, Diagnostic[]> {
     if (TRIGGER_LEADS.has(lead)) {
       const trigger = parseTrigger(sentence, diagnostics);
       if (trigger) triggers.push(trigger);
-    } else if (lead === 'if') {
-      // "If you find an unplayable card, <effects…>" — the Find rider. Its
-      // effects join the on-play list in order, tagged conditional.
-      effects.push(...parseFindRider(sentence, diagnostics));
+    } else if (lead === 'next') {
+      // "Next turn, gain 2 shields, craft 3." — the effects are promised for
+      // the start of the caster's next turn rather than applied now.
+      effects.push(...parseNextTurn(sentence, diagnostics));
     } else if (keyword) {
       modifiers.push({ kind: 'Modifier', modifier: keyword, start: head.start, end: sentence[sentence.length - 1]!.end });
     } else if (isModifierSentence(sentence)) {
@@ -132,6 +133,7 @@ function parseTrigger(sentence: Token[], diagnostics: Diagnostic[]): TriggerNode
     kind: 'Trigger',
     event: parsed.event,
     ...(parsed.cloudType ? { cloudType: parsed.cloudType } : {}),
+    ...(parsed.mark ? { mark: parsed.mark } : {}),
     ...(condition ? { condition } : {}),
     effects,
     start: sentence[0]!.start,
@@ -143,7 +145,7 @@ function parseTrigger(sentence: Token[], diagnostics: Diagnostic[]): TriggerNode
 function parseEventPhrase(
   phrase: Token[],
   diagnostics: Diagnostic[],
-): { event: TriggerEventKind; cloudType?: CloudType } | null {
+): { event: TriggerEventKind; cloudType?: CloudType; mark?: MarkKind } | null {
   const words = phrase.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
   const has = (w: string) => words.includes(w);
 
@@ -156,10 +158,17 @@ function parseEventPhrase(
   }
   if (has('unblocked') && has('damage')) return { event: 'dealUnblockedDamage' };
   if ((has('minion') || has('minions')) && has('replayed')) return { event: 'minionReplayed' };
-  // The Writer's events. Both must be tested before the generic card-discard /
-  // draw readings below — they are narrower phrasings of the same words.
-  if (has('burn')) return { event: 'burnCard' };
-  if (has('draw') && has('unplayable')) return { event: 'drawUnplayableCard' };
+  // The Writer's Burn and the Old Lady's events. All must be tested before the
+  // generic card-discard / play readings below, being narrower phrasings of the
+  // same words.
+  if (has('burn')) return { event: 'burn' };
+  if (has('lose') && (has('hp') || has('health'))) return { event: 'loseHp' };
+  if (has('add')) return { event: 'addCard' };
+  if (has('play') && has('marked')) {
+    const mark = MARKS.find((m) => words.includes(m));
+    return mark ? { event: 'playMarkedCard', mark } : { event: 'playMarkedCard' };
+  }
+  if (has('play') && has('blank')) return { event: 'playBlankCard' };
   // Card discards. The Molt-qualified form is the narrower reading of the same
   // words, so it has to be tested first.
   if (has('shuffle') || has('shuffled')) return { event: 'shuffleDeck' };
@@ -218,37 +227,32 @@ function normalizeResource(word: string): string {
 
 /**
  * A card keyword as a whole sentence of its own (so it can't be confused with a
- * verb): `Molt.` — the Crab's plays-for-free-when-discarded — and `Unplayable.`
- * — the Writer's can't-be-played-but-Burn-spends-it.
+ * verb): `Molt.` (the Crab's plays-for-free-when-discarded), `Blank.` / `Add.`
+ * (the Old Lady's window opener and its window-only cards) and `Fading.` (the
+ * Writer's discard-at-end-of-turn).
  */
-function keywordModifierOf(sentence: Token[]): 'molt' | 'unplayable' | null {
+const CARD_KEYWORDS = new Set(['molt', 'blank', 'add', 'fading']);
+
+function keywordModifierOf(sentence: Token[]): 'molt' | 'blank' | 'add' | 'fading' | null {
   if (sentence.length !== 1 || sentence[0]!.type !== 'word') return null;
   const word = sentence[0]!.value.toLowerCase();
-  if (word === 'molt') return 'molt';
-  if (word === 'unplayable') return 'unplayable';
-  return null;
+  return CARD_KEYWORDS.has(word) ? (word as 'molt' | 'blank' | 'add' | 'fading') : null;
 }
 
 /**
- * "If you find an unplayable card, <effect>[, <effect>…]" — the payoff half of
- * Find. Each effect is tagged `when: 'foundUnplayable'`, which the resolver
- * turns into a conditional action gated on the play's last Find.
+ * "Next turn, <effect>[, <effect>…]" — Trophy, Well Rested, Destroy. Each
+ * effect is tagged `when: 'nextTurn'`, which the resolver turns into a
+ * `GrantNextTurn` promise the start-of-turn cascade pays out.
  */
-function parseFindRider(sentence: Token[], diagnostics: Diagnostic[]): EffectNode[] {
+function parseNextTurn(sentence: Token[], diagnostics: Diagnostic[]): EffectNode[] {
   const clauses = splitOn(sentence, CLAUSE_SEP);
-  const phrase = clauses[0]!;
-  const words = phrase.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
-  if (!words.includes('unplayable')) {
-    diagnostics.push(diag('Only "If you find an unplayable card, …" is supported.', phrase[0]!));
-    return [];
-  }
   const effects: EffectNode[] = [];
   for (const clause of clauses.slice(1)) {
     const effect = parseEffectStatement(clause, diagnostics);
-    if (effect) effects.push({ ...effect, when: 'foundUnplayable' });
+    if (effect) effects.push({ ...effect, when: 'nextTurn' });
   }
   if (effects.length === 0) {
-    diagnostics.push(diag('"If you find an unplayable card" needs at least one effect after the comma.', phrase[0]!));
+    diagnostics.push(diag('"Next turn" needs at least one effect after the comma.', sentence[0]!));
   }
   return effects;
 }
@@ -261,6 +265,22 @@ function isModifierSentence(sentence: Token[]): boolean {
   if (
     (first === 'minions' || first === 'minion') &&
     sentence.some((t) => t.type === 'word' && t.value.toLowerCase() === 'replayed')
+  ) {
+    return true;
+  }
+  // "Power no longer decreases at the start of your turn." (Explosives)
+  if (
+    first === 'power' &&
+    sentence.some((t) => t.type === 'word' && t.value.toLowerCase().startsWith('decrease'))
+  ) {
+    return true;
+  }
+  // "You lose only half of your poison when you use venom or drink." (Consuming)
+  if (first === 'you' && sentence.some((t) => t.type === 'word' && t.value.toLowerCase() === 'half')) return true;
+  // "Clouds play their effect when they are removed." (Wild Wind)
+  if (
+    (first === 'clouds' || first === 'cloud') &&
+    sentence.some((t) => t.type === 'word' && t.value.toLowerCase() === 'removed')
   ) {
     return true;
   }
@@ -278,6 +298,19 @@ function parseModifier(sentence: Token[], diagnostics: Diagnostic[]): ModifierNo
   }
   if (words.includes('discard') && negated) {
     return { kind: 'Modifier', modifier: 'suppressFogDiscard', ...span };
+  }
+  if (words.includes('half') && (words.includes('venom') || words.includes('drink'))) {
+    return { kind: 'Modifier', modifier: 'venomKeepsHalf', ...span };
+  }
+  if ((words.includes('cloud') || words.includes('clouds')) && words.includes('removed')) {
+    return { kind: 'Modifier', modifier: 'fireCloudsOnRemoval', ...span };
+  }
+  if (words.includes('power') && words.some((w) => w.startsWith('decrease'))) {
+    if (!negated) {
+      diagnostics.push(diag('Only "Power no longer decreases …" is supported.', sentence[0]!));
+      return null;
+    }
+    return { kind: 'Modifier', modifier: 'suppressPowerDecay', ...span };
   }
   if (words.includes('heal')) {
     const numbers = sentence.filter((t) => t.type === 'number').map((t) => Number(t.value));
@@ -305,7 +338,7 @@ function parseEffectStatement(clause: Token[], diagnostics: Diagnostic[]): Effec
   if (scaled) {
     const head = rest[0];
     const lead = head?.type === 'word' ? head.value.toLowerCase() : '';
-    if (lead === 'deal' || lead === 'gain' || lead === 'poison') {
+    if (lead === 'deal' || lead === 'gain' || lead === 'poison' || lead === 'craft' || lead === 'heal') {
       effect = parseScaledDeal(rest, diagnostics);
     } else {
       diagnostics.push(diag('Scaling ("for each", "equal to") is only supported on "deal" for now.', head ?? rest[0]!));
@@ -319,7 +352,16 @@ function parseEffectStatement(clause: Token[], diagnostics: Diagnostic[]): Effec
   return effect;
 }
 
-const SCALE_RESOURCES = new Set<ScaleMetric>(['energy', 'poison', 'block', 'shield', 'defense', 'power', 'bravery']);
+const SCALE_RESOURCES = new Set<ScaleMetric>([
+  'energy',
+  'poison',
+  'block',
+  'shield',
+  'defense',
+  'power',
+  'bravery',
+  'craft',
+]);
 
 /**
  * Parse "<verb> … equal to your X" / "<verb> N … for each Y". Shared by `deal`
@@ -332,6 +374,8 @@ function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode 
   const nounFor = (): string | undefined => {
     if (verb === 'deal') return 'damage';
     if (verb === 'poison') return 'poison';
+    if (verb === 'craft') return 'craft';
+    if (verb === 'heal') return 'hp';
     const w = group.filter((t) => t.type === 'word').map((t) => singular(t.value.toLowerCase()));
     return w.find((x) => GAIN_RESOURCES.has(x));
   };
@@ -339,7 +383,17 @@ function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode 
   const span = { start: head.start, end: group[group.length - 1]!.end };
 
   if (words.includes('equal')) {
-    const resource = words.map((w) => singular(w)).find((w) => SCALE_RESOURCES.has(w as ScaleMetric));
+    // "equal to the craft burned" (Dumpster Diver) reads the Burn that just
+    // happened, not the Craft still banked — a narrower reading of the same
+    // word, so it has to be tested before the plain resource lookup.
+    if (words.includes('craft') && (words.includes('burned') || words.includes('burnt'))) {
+      const n0 = nounFor();
+      return { kind: 'Effect', verb, ...(n0 ? { noun: n0 } : {}), scale: { per: 'craftBurned' }, ...span };
+    }
+    // Only look *after* "equal": "gain bravery equal to your defense" names two
+    // resources, and the one being scaled off is always the later one.
+    const tail = words.slice(words.indexOf('equal') + 1);
+    const resource = tail.map((w) => singular(w)).find((w) => SCALE_RESOURCES.has(w as ScaleMetric));
     if (!resource) {
       diagnostics.push(diag('"equal to your …" needs a resource (energy, poison, block, shield, defense, power, bravery).', head));
       return null;
@@ -356,6 +410,8 @@ function parseScaledDeal(group: Token[], diagnostics: Diagnostic[]): EffectNode 
     diagnostics.push(diag('"… for each …" needs a per-unit amount, e.g. "Deal 3 damage for each cloud".', head));
     return null;
   }
+  // "Gain 1 power for each blank card in your hand" — a per-unit amount with no
+  // countable noun of its own, so `countMetric` reads the qualifier.
   const per = countMetric(words);
   if (!per) {
     diagnostics.push(diag('"for each …" needs cloud, unique cloud, minion, or card discarded this turn.', head));
@@ -387,6 +443,9 @@ function countMetric(words: string[]): ScaleMetric | null {
   const cards = words.includes('card') || words.includes('cards');
   if (cards && words.includes('discarded')) return 'cardsDiscardedThisTurn';
   if (cards && words.includes('played')) return 'cardsPlayedThisTurn';
+  if (cards && words.includes('blank')) return 'blankCardsInHand';
+  if (cards && words.includes('fading')) return 'fadingCardsInHand';
+  if (cards && words.includes('added')) return 'cardsAdded';
   const minions = words.includes('minion') || words.includes('minions');
   if (minions && words.includes('discard')) return 'minionsDiscarded';
   if (minions) return 'minions';
@@ -451,6 +510,52 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       const last = group[2] && group[2].type === 'word' ? group[2] : group[1]!;
       return { kind: 'Effect', verb: 'heal', amount, ...span(head, last) };
     }
+    case 'lose': {
+      // The Old Lady's costs: "Lose 2 HP", "Lose 1 power", "Lose all power".
+      const last = group[group.length - 1]!;
+      const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
+      const noun = words.includes('power')
+        ? 'power'
+        : words.includes('hp') || words.includes('health')
+          ? 'hp'
+          : words.includes('defense')
+            ? 'defense'
+            : null;
+      if (!noun) {
+        diagnostics.push(diag('Only "lose N HP", "lose N power", "lose all power" and "lose all defense" are supported.', head));
+        return null;
+      }
+      if (words.includes('all')) {
+        return { kind: 'Effect', verb: 'lose', noun: `all-${noun}`, ...span(head, last) };
+      }
+      const amount = expectNumber(group, 1, head, diagnostics);
+      if (amount === null) return null;
+      return { kind: 'Effect', verb: 'lose', amount, noun, ...span(head, last) };
+    }
+    case 'craft': {
+      // The Writer's resource gain: "Craft 2." Bare "Craft" means 1.
+      const last = group[group.length - 1]!;
+      const numberTok = group.find((t) => t.type === 'number');
+      return { kind: 'Effect', verb: 'craft', amount: numberTok ? Number(numberTok.value) : 1, ...span(head, last) };
+    }
+    case 'mark': {
+      // "Mark 2 cards in your hand with sharp 1." / "Mark all cards with sturdy
+      // 2." / "Mark a random card with flaming 1." / "Mark a card with a random
+      // marking 3." (Chisel). Two numbers: how many cards, then the value —
+      // with only one, it is the value and a single card is marked.
+      const last = group[group.length - 1]!;
+      const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
+      const numbers = group.filter((t) => t.type === 'number').map((t) => Number(t.value));
+      const mark = MARKS.find((m) => words.includes(m)) ?? (words.includes('random') && words.includes('marking') ? 'random' : null);
+      if (!mark) {
+        diagnostics.push(diag('"Mark …" needs a marking: sharp, sturdy, flaming, safe, or "a random marking".', head));
+        return null;
+      }
+      const value = numbers.length > 1 ? numbers[1]! : (numbers[0] ?? 1);
+      const count = numbers.length > 1 ? numbers[0]! : 1;
+      const scope = words.includes('all') ? 'all' : words.includes('random') && mark !== 'random' ? 'random' : 'hand';
+      return { kind: 'Effect', verb: 'mark', mark, scope, amount: value, count, ...span(head, last) };
+    }
     case 'poison': {
       const amount = expectNumber(group, 1, head, diagnostics);
       if (amount === null) return null;
@@ -483,6 +588,10 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
     case 'remove': {
       // "Remove all clouds" carries no number, so it can't use the counted path.
       const last = group[group.length - 1]!;
+      // "Remove all markings." (Plate) — the Knight's reset, not a cloud effect.
+      if (group.some((t) => t.type === 'word' && t.value.toLowerCase().startsWith('marking'))) {
+        return { kind: 'Effect', verb: 'remove', noun: 'markings', ...span(head, last) };
+      }
       if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'all')) {
         return { kind: 'Effect', verb: 'remove', noun: 'allClouds', ...span(head, last) };
       }
@@ -493,19 +602,23 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       }
       return needAmountNoun(group, 'remove', ['cloud'], diagnostics);
     }
-    case 'add': {
-      // "Add molt to 2 cards in your hand." / "…to the top card of your draw
-      // pile." / "Add unplayable to 2 cards in your hand." (Trash Can).
+    case 'add':
+    case 'put': {
+      // Granting a per-copy keyword: "Add molt to 2 cards in your hand.",
+      // "Put add on 1 card in your hand.", "Add fading to 1 card in your hand.",
+      // or the draw-pile form "Add molt to the top card of your draw pile."
       const last = group[group.length - 1]!;
       const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
-      const keyword = words.includes('molt') ? 'molt' : words.includes('unplayable') ? 'unplayable' : null;
+      // `add` is both a verb and a keyword, so look for the keyword *after* the
+      // leading verb — "Put add on …" and "Add add to …" both name it once more.
+      const keyword = (['molt', 'fading', 'add'] as const).find((k) => words.slice(1).includes(k));
       if (!keyword) {
-        diagnostics.push(diag('Only "add molt to …" and "add unplayable to …" are supported.', head));
+        diagnostics.push(diag('Only "add/put molt, add or fading on … cards in your hand" is supported.', head));
         return null;
       }
       if (words.includes('draw')) {
-        if (keyword === 'unplayable') {
-          diagnostics.push(diag('Unplayable can only be added to cards in your hand.', head));
+        if (keyword !== 'molt') {
+          diagnostics.push(diag(`${keyword} can only be granted to cards in your hand.`, head));
           return null;
         }
         return { kind: 'Effect', verb: 'add', noun: 'moltDrawTop', ...span(head, last) };
@@ -515,7 +628,7 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
         kind: 'Effect',
         verb: 'add',
         amount: numberTok ? Number(numberTok.value) : 1,
-        noun: keyword === 'molt' ? 'moltHand' : 'unplayableHand',
+        noun: keyword,
         ...span(head, last),
       };
     }
@@ -544,14 +657,19 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       return { kind: 'Effect', verb: 'retain', noun: 'poison', ...span(head, last) };
     }
     case 'double': {
-      // Only "double your clouds next turn" (Solar Power) is understood today.
+      // "Double your clouds next turn" (Solar Power), or doubling a stored
+      // X-value in place: bravery (Gamble it All), poison (Explosion), craft.
       const last = group[group.length - 1]!;
       const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
-      if (!words.includes('cloud') && !words.includes('clouds')) {
-        diagnostics.push(diag('Only "double your clouds next turn" is supported.', head));
+      if (words.includes('cloud') || words.includes('clouds')) {
+        return { kind: 'Effect', verb: 'double', noun: 'clouds', ...span(head, last) };
+      }
+      const noun = (['bravery', 'poison', 'craft'] as const).find((r) => words.includes(r));
+      if (!noun) {
+        diagnostics.push(diag('Only "double your clouds next turn" and "double your bravery/poison/craft" are supported.', head));
         return null;
       }
-      return { kind: 'Effect', verb: 'double', noun: 'clouds', ...span(head, last) };
+      return { kind: 'Effect', verb: 'double', noun, ...span(head, last) };
     }
     case 'fill': {
       // Only "fill all empty cloud slots [with random clouds]" is understood.
@@ -585,8 +703,8 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       };
     }
     case 'burn': {
-      // "Burn 2." spends 2 Unplayable cards; "Burn all unplayable cards in your
-      // hand." (Inspiration) spends every one. A bare "Burn." means 1.
+      // "Burn 2." spends 2 Craft as this card's cost; "Burn all." (Dumpster
+      // Diver) spends the lot. A bare "Burn." means 1.
       const last = group[group.length - 1]!;
       if (group.some((t) => t.type === 'word' && t.value.toLowerCase() === 'all')) {
         return { kind: 'Effect', verb: 'burn', noun: 'all', ...span(head, last) };
@@ -594,29 +712,22 @@ function parseStatement(group: Token[], diagnostics: Diagnostic[]): EffectNode |
       const numberTok = group.find((t) => t.type === 'number');
       return { kind: 'Effect', verb: 'burn', amount: numberTok ? Number(numberTok.value) : 1, ...span(head, last) };
     }
-    case 'find': {
-      // "Find 2 cards." — draw 2 and note whether an Unplayable came up, which
-      // the card's "If you find an unplayable card, …" sentence then reads.
-      const amount = expectNumber(group, 1, head, diagnostics);
-      if (amount === null) return null;
-      const last = group[2] && group[2].type === 'word' ? group[2] : group[1]!;
-      return { kind: 'Effect', verb: 'find', amount, noun: 'cards', ...span(head, last) };
-    }
     case 'set': {
-      // "Set your bravery to zero." (Brain Storm). Only bravery can be set.
+      // "Set your bravery to zero." (Brain Storm), "Set your craft to zero."
       const last = group[group.length - 1]!;
       const words = group.filter((t) => t.type === 'word').map((t) => t.value.toLowerCase());
-      if (!words.includes('bravery')) {
-        diagnostics.push(diag('Only "set your bravery to zero" is supported.', head));
+      const noun = (['bravery', 'craft', 'defense'] as const).find((r) => words.includes(r));
+      if (!noun) {
+        diagnostics.push(diag('Only "set your bravery/craft/defense to N" is supported.', head));
         return null;
       }
       const numberTok = group.find((t) => t.type === 'number');
       const amount = numberTok ? Number(numberTok.value) : words.includes('zero') ? 0 : null;
       if (amount === null) {
-        diagnostics.push(diag('"Set your bravery" needs a value, e.g. "set your bravery to zero".', head));
+        diagnostics.push(diag(`"Set your ${noun}" needs a value, e.g. "set your ${noun} to zero".`, head));
         return null;
       }
-      return { kind: 'Effect', verb: 'set', noun: 'bravery', amount, ...span(head, last) };
+      return { kind: 'Effect', verb: 'set', noun, amount, ...span(head, last) };
     }
     case 'discard': {
       // "Discard your hand" takes no number, so it can't go through the

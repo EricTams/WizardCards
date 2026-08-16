@@ -3,7 +3,7 @@ import { buildTestState, playCard, startTurn, endTurn, TEST_SELF, TEST_TARGET } 
 import { SPRING, WINTER, STATIC, SUMMER, FALL } from '@cards/definitions/cloud-persistents';
 import { ROT_AWAY, CONSUMING } from '@cards/definitions/wizard-persistents';
 import { THUNDER, SHINE } from '@cards/definitions/cloud';
-import { STUN, THROW, ALCHEMY } from '@cards/definitions/wizard';
+import { STUN, ALCHEMY, SEEK } from '@cards/definitions/wizard';
 import { entityId, type CardId } from '@shared/index';
 import type { CardDef } from '@cards/index';
 import type { MinionState } from '@engine/index';
@@ -64,15 +64,14 @@ describe('reactive persistents', () => {
     expect(after.player.poison).toBe(1);
   });
 
-  it('Consuming: discarding a minion heals', () => {
+  it('Consuming: Venom spends only half your poison', () => {
     const state = buildTestState({
-      player: { hp: 20, maxHp: 30, persistents: [CONSUMING.id], minions: [dummyMinion(THROW.id)] },
+      player: { persistents: [CONSUMING.id], poison: 7 },
       target: { hp: 30, maxHp: 30 },
     });
-    const { state: after } = playCard(state, THROW, ctxFor(THROW)); // Deal 8, Discard 1 minion
-    expect(after.enemies[0]!.hp).toBe(22);
-    expect(after.player.minions).toHaveLength(0);
-    expect(after.player.hp).toBe(21); // Consuming healed 1
+    const { state: after } = playCard(state, SEEK, ctxFor(SEEK)); // Venom, gain 1 energy
+    expect(after.enemies[0]!.hp).toBe(23); // still hits for the full 7
+    expect(after.player.poison).toBe(3); // 7 halved, rounded down
   });
 
   it('Summer: starting a turn with over 3 energy deals 4 to all opponents', () => {

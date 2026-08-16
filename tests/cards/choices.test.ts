@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { cardIdsOf, type MinionState } from '@engine/index';
 import {
-  buildTestState, playFromHand, resolvePendingChoice, endTurn, TEST_SELF,
+  buildTestState, playFromHand, canPlayAt, resolvePendingChoice, endTurn, TEST_SELF,
 } from '@cards/index';
-import { QUICKSAND, PINCH, DOUBLE_DRAW, BOIL, LITTLE_SPLASH, DRY_OUT } from '@cards/definitions/crab';
-import { DUMPSTER_DIVER, NOTES, SCRIBBLE, DISPOSE } from '@cards/definitions/writer';
+import { QUICKSAND, PINCH, DOUBLE_DRAW, BOIL, DRY_OUT } from '@cards/definitions/crab';
+import { TYPE } from '@cards/definitions/writer';
 import { CLEANSE, SUN_RAY } from '@cards/definitions/cloud';
 import { STATIC } from '@cards/definitions/cloud-persistents';
 import { THROW, ALCHEMY, BATTERY } from '@cards/definitions/wizard';
@@ -110,38 +110,29 @@ describe('interactive discards — the player picks the cards', () => {
   });
 });
 
-describe('interactive burns — the player picks the Unplayable cards', () => {
-  it('pauses when there are more Unplayable cards than the burn needs', () => {
-    // Dumpster Diver burns 1; Notes and Scribble are both eligible.
-    const state = buildTestState({
-      player: { energy: 5, hand: [DUMPSTER_DIVER.id, NOTES.id, SCRIBBLE.id, 'a'] as CardId[] },
+/**
+ * Burn no longer selects cards — it spends Craft — so there is nothing to pick.
+ * What's left to guard is that a Burn card simply can't be played without the
+ * Craft to pay for it.
+ */
+describe('Burn as a Craft cost', () => {
+  it('is unplayable without enough Craft banked, and spends it when it is', () => {
+    const broke = buildTestState({
+      player: { energy: 5, craft: 2, hand: [TYPE.id] },
       target: { hp: 30, maxHp: 30 },
     });
-    const paused = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true }).state;
-    expect(paused.pending).toMatchObject({ kind: 'burn', count: 1 });
-    const { state: after } = resolvePendingChoice(paused, [uidOf(paused, SCRIBBLE.id)]);
-    expect(after.player.energy).toBe(4 + 1); // the chosen Scribble's burned effect
-    expect(cardIdsOf(after.player.hand).sort()).toEqual([NOTES.id, 'a'].sort()); // Notes survived
-    expect(enemyHp(after)).toBe(28); // Dumpster Diver's own damage resumed
-  });
+    expect(canPlayAt(broke.player, 0)).toBe(false);
+    expect(playFromHand(broke, TEST_SELF, 0).state).toBe(broke);
 
-  it('auto-resolves when the burn takes every Unplayable card anyway', () => {
-    const state = buildTestState({
-      player: { energy: 5, hand: [DUMPSTER_DIVER.id, DISPOSE.id, 'a'] as CardId[] },
+    const funded = buildTestState({
+      player: { energy: 5, craft: 4, hand: [TYPE.id] },
       target: { hp: 30, maxHp: 30 },
     });
-    const { state: after } = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true });
-    expect(after.pending).toBeUndefined();
-    expect(enemyHp(after)).toBe(24); // Dispose 4 + Dumpster Diver 2
-  });
-
-  it('a pick pointing at a playable card is refused', () => {
-    const state = buildTestState({
-      player: { energy: 5, hand: [DUMPSTER_DIVER.id, NOTES.id, SCRIBBLE.id, LITTLE_SPLASH.id] as CardId[] },
-    });
-    const paused = playFromHand(state, TEST_SELF, 0, undefined, { interactive: true }).state;
-    const splash = paused.player.hand.find((c) => c.cardId === LITTLE_SPLASH.id)!.uid;
-    expect(resolvePendingChoice(paused, [splash]).state).toBe(paused);
+    expect(canPlayAt(funded.player, 0)).toBe(true);
+    const { state: after } = playFromHand(funded, TEST_SELF, 0);
+    expect(after.player.craft).toBe(1); // 4 - Type's Burn 3
+    expect(enemyHp(after)).toBe(25);
+    expect(after.player.energy).toBe(5); // a Burn card costs no energy
   });
 });
 

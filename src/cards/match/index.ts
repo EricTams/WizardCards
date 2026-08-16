@@ -23,13 +23,12 @@ import {
   type MinionState,
   type PendingChoice,
 } from '@engine/index';
-import type { EntityId } from '@shared/index';
+import type { CloudType, EntityId } from '@shared/index';
 import type { PlayContext } from '@cards/dsl/resolver';
 import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
 import { activePersistents } from '@cards/match/persistents';
 import { moltTriggers } from '@cards/match/molt';
-import { burnTriggers } from '@cards/match/burn';
 import { HAND_REFILL } from '@cards/match/content';
 
 export interface RunResult {
@@ -42,22 +41,49 @@ const TRIGGER_CAP = 1000;
 
 /**
  * Follow-up actions one event owes: what the active persistents want, plus the
- * free plays from any discarded Molt cards and any Burned Unplayable cards.
- * Three sources because they live in different places — persistents react from
- * the play area, Molt and Burn cards react as they leave the hand (see
- * `molt.ts` / `burn.ts`).
+ * free plays from any discarded Molt cards. Two sources because they live in
+ * different places — persistents react from the play area, while a Molt card
+ * reacts as it leaves the hand (see `molt.ts`).
  */
 export function reactiveTriggers(state: GameState, event: GameEvent): Action[] {
   return [
     ...activePersistents(state).flatMap((p) => (p.onEvent ? p.onEvent(state, event) : [])),
     ...moltTriggers(state, event),
-    ...burnTriggers(state, event),
+    ...farewellClouds(state, event),
   ];
+}
+
+/**
+ * Wild Wind: "when a Cloud is removed it plays its effect before it goes away".
+ * A modifier rather than a trigger, because the effect depends on which *kind*
+ * of cloud left — which only the `CloudsRemoved` event knows.
+ */
+function farewellClouds(state: GameState, event: GameEvent): Action[] {
+  if (event.type !== 'CloudsRemoved' || event.removed.length === 0) return [];
+  if (event.target !== state.player.id) return []; // persistents are the player's
+  if (!activePersistents(state).some((p) => p.fireCloudsOnRemoval)) return [];
+  return event.removed.map((type) => cloudEffect(type, event.target, snowHealBonus(state)));
+}
+
+/**
+ * Let the play area amend an action before it reaches the reducer.
+ *
+ * Only Consuming needs this today: "lose only half of your Poison when you use
+ * Venom or Drink" changes how one atomic action behaves, and the reducer must
+ * not know what persistents exist. Rewriting here rather than in the resolver
+ * covers every path a Venom can arrive by — a card play, a Molt free play, a
+ * minion replay — and keeps the action itself plain, serializable data.
+ */
+function amend(state: GameState, action: Action): Action {
+  if (action.type !== 'Venom' && action.type !== 'Drink') return action;
+  if (action.self !== state.player.id) return action; // persistents are the player's
+  if (!activePersistents(state).some((p) => p.venomKeepsHalf)) return action;
+  return { ...action, keepHalf: true };
 }
 
 /** Apply one action, then resolve the reactive-trigger cascade it sets off. */
 export function applyWithTriggers(state: GameState, action: Action): RunResult {
-  const base = apply(state, action);
+  const base = apply(state, amend(state, action));
   let current = base.state;
   const events: GameEvent[] = [...base.events];
 
@@ -78,7 +104,7 @@ export function applyWithTriggers(state: GameState, action: Action): RunResult {
 /**
  * "Run out of cards": the next refill draw owed, or null. A combatant whose
  * hand is empty mid-battle draws `HAND_REFILL` (+ their `bonusRefillDraw` —
- * Brain in a Jar) new cards. A design rule, so it lives here beside the other
+ * Brain Jar) new cards. A design rule, so it lives here beside the other
  * orchestration, not in the engine. Gated to the battle phases — setup and the
  * mulligan legitimately pass through empty hands — and to combatants who still
  * have cards *somewhere*, so a truly exhausted deck can't loop the refill.
@@ -134,7 +160,7 @@ export function runWithTriggers(state: GameState, actions: readonly Action[]): R
  * Would applying `action` interactively need the owner to pick first? Only
  * when there's a genuine choice: a counted selection without chosen
  * `uids`/`indices`, with MORE eligible things than the count — a whole-pool
- * effect (discard your hand, remove all clouds, burn every Unplayable) or a
+ * effect (discard your hand, remove all clouds) or a
  * count that covers everything eligible has exactly one outcome and
  * auto-resolves. One entry per selecting action; the random/'all' variants
  * (RemoveRandomClouds, DiscardAllMinions, …) are separate types and never ask.
@@ -157,11 +183,6 @@ function choiceFor(
       if (action.uids) return null;
       const owner = action.owner ?? state.player.id;
       return pick('discard', owner, action.count, combatantOf(state, owner)?.hand.length ?? 0);
-    }
-    case 'BurnCards': {
-      if (action.uids || action.count === undefined) return null;
-      const c = combatantOf(state, action.owner);
-      return pick('burn', action.owner, action.count, c?.hand.filter((i) => i.unplayable).length ?? 0);
     }
     case 'RemoveClouds': {
       if (action.indices) return null;
@@ -222,33 +243,32 @@ function combatantOf(state: GameState, id: EntityId): Combatant | undefined {
   return state.player.id === id ? state.player : state.enemies.find((e) => e.id === id);
 }
 
+/** Winter's bonus on top of a Snow cloud's heal (the player's persistents only). */
+function snowHealBonus(state: GameState): number {
+  return activePersistents(state).reduce((n, p) => n + (p.snowHealBonus ?? 0), 0);
+}
+
+/** What one cloud of `type` does when it fires for `actorId`. */
+function cloudEffect(type: CloudType, actorId: EntityId, snowBonus: number): Action {
+  switch (type) {
+    case 'lightning':
+      return { type: 'GainEnergy', target: actorId, amount: 1 };
+    case 'snow':
+      return { type: 'Heal', target: actorId, amount: 1 + snowBonus };
+    case 'storm':
+      return { type: 'DealDamageToRandomEnemy', self: actorId, amount: 1 };
+    case 'fog':
+      return { type: 'DrawCards', owner: actorId, count: 1 };
+  }
+}
+
 /** The ordered cloud triggers for `actor`'s current clouds (defaults to the player). */
 export function cloudEffects(state: GameState, actorId: EntityId = state.player.id): Action[] {
   const actor = combatantOf(state, actorId);
   if (!actor) return [];
   // Persistents (Winter's snow bonus) are the player's; the enemy has none today.
-  const snowBonus =
-    actorId === state.player.id
-      ? activePersistents(state).reduce((n, p) => n + (p.snowHealBonus ?? 0), 0)
-      : 0;
-  const actions: Action[] = [];
-  for (const cloud of actor.clouds) {
-    switch (cloud) {
-      case 'lightning':
-        actions.push({ type: 'GainEnergy', target: actorId, amount: 1 });
-        break;
-      case 'snow':
-        actions.push({ type: 'Heal', target: actorId, amount: 1 + snowBonus });
-        break;
-      case 'storm':
-        actions.push({ type: 'DealDamageToRandomEnemy', self: actorId, amount: 1 });
-        break;
-      case 'fog':
-        actions.push({ type: 'DrawCards', owner: actorId, count: 1 });
-        break;
-    }
-  }
-  return actions;
+  const snowBonus = actorId === state.player.id ? snowHealBonus(state) : 0;
+  return actor.clouds.map((cloud) => cloudEffect(cloud, actorId, snowBonus));
 }
 
 /** A minion's on-play effects, minus summoning itself again. */
@@ -291,7 +311,19 @@ export function runTurnCascade(
   // Design: you start each turn with a base energy (usually 1); Lightning clouds
   // then add on top. Reset happens before clouds so "start with >3 energy" checks
   // (Summer) see the post-Lightning total.
-  if (opts.resetEnergyTo !== undefined) run([{ type: 'SetEnergy', target: actorId, amount: opts.resetEnergyTo }]);
+  // Turn 1 asks for no energy reset, and that same flag marks it as the turn
+  // with no *upkeep* at all: a combat-start relic (Calculator's energy,
+  // Earring's Power) must survive into the turn it was granted for.
+  const upkeep = opts.resetEnergyTo !== undefined;
+  if (upkeep) run([{ type: 'SetEnergy', target: actorId, amount: opts.resetEnergyTo! }]);
+  // "Power decreases by 1 at the start of your turn" — before anything can spend
+  // it, and before this turn's Power-granting cards land. Explosives stops the
+  // decay; like every persistent, that reads the player's play area.
+  const powerDecays = !isPlayer || !activePersistents(current).some((p) => p.suppressPowerDecay);
+  if (upkeep && powerDecays) run([{ type: 'GainPower', target: actorId, amount: -1 }]);
+  // Pay out what last turn promised ("Next turn, gain 2 Shields and Craft 3"),
+  // after the energy reset so a promised energy is not wiped by it.
+  run([{ type: 'ApplyNextTurn', target: actorId }]);
   // Solar Power: clouds fire a second time this turn, then the flag is spent.
   // Read before the first firing, since the actions below rewrite the combatant.
   const playsTwice = combatantOf(current, actorId)?.cloudsPlayTwice ?? false;
@@ -349,9 +381,9 @@ export function startTurn(
 }
 
 /**
- * End the player's turn: run end-of-turn persistents, Fog clouds force a discard
- * (unless Fall suppresses it), then the turn ends. (Enemy turns / full turn
- * structure are Phase 2.)
+ * End the player's turn: run end-of-turn persistents, discard any Fading cards
+ * still in hand, Fog clouds force a discard (unless Fall suppresses it), then
+ * the turn ends.
  */
 export function endTurn(
   state: GameState,
@@ -368,6 +400,11 @@ export function endTurn(
   };
 
   if (isPlayer) run(activePersistents(current).flatMap((b) => (b.onEndTurn ? b.onEndTurn(current) : [])));
+
+  // Fading: "if this card is in your hand at the end of your turn, it is
+  // discarded". Before the Fog penalty, so a Fading card can't be picked for it
+  // and then discarded twice — and it's a real discard, so Molt still fires.
+  run([{ type: 'DiscardFading', owner: actorId }]);
 
   const autumn = isPlayer && activePersistents(current).some((b) => b.suppressFogDiscard);
   const actor = combatantOf(current, actorId);

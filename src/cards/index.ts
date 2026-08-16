@@ -54,6 +54,7 @@ export {
   confirmMulligan,
   playFromHand,
   canPlayAt,
+  energyCostAt,
   resolvePendingChoice,
   endPlayerTurn,
   endPlayerPhase,
@@ -68,8 +69,10 @@ export {
   randomMatchup,
   capClouds,
 } from '@cards/match/battle';
+export { burnCostOf, printedKeywords, stampPrintedKeywords } from '@cards/match/keywords';
+export { markEffects, uniqueMarkings } from '@cards/match/marks';
 export type { CharacterDef, RelicDef } from '@cards/match/content';
-export { CHARACTERS, RELICS, getRelic, BASE_MAX_HP, BASE_ENERGY, DECK_SIZE, CLOUD_CAP, cloudCapFor } from '@cards/match/content';
+export { CHARACTERS, RELICS, RELIC_ART, getRelic, BASE_MAX_HP, BASE_ENERGY, DECK_SIZE, CLOUD_CAP, cloudCapFor } from '@cards/match/content';
 
 export { ok, err };
 export type { Result, Diagnostic };

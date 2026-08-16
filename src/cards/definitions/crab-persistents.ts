@@ -13,7 +13,7 @@ export const CRAB_TRAP: CardDef = {
   id: cardId('crab-crab-trap'),
   name: 'Crab Trap',
   cost: 1,
-  text: 'At the start of your turn, draw 1 additional card.',
+  text: 'At the start of your turn, draw 1 card, gain 1 energy.',
 };
 
 /** Turtle up, then cash the block in for a fresh hand (firing any Molt with it). */
@@ -21,7 +21,7 @@ export const EXOSKELETON: CardDef = {
   id: cardId('crab-exoskeleton'),
   name: 'Exoskeleton',
   cost: 1,
-  text: 'At the end of your turn, if you have 5 or more block, discard your hand, draw 4 cards.',
+  text: 'At the end of your turn, if you have 5 or more defense, discard your hand, draw 5 cards.',
 };
 
 /** The big-churn payoff: ten discards in one turn hits the whole table. */

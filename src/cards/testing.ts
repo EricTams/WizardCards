@@ -24,7 +24,7 @@ import {
 } from '@engine/index';
 import type { CardDef } from '@cards/registry';
 import { compile } from '@cards/compile';
-import { stampPrintedKeywords } from '@cards/match/burn';
+import { stampPrintedKeywords } from '@cards/match/keywords';
 
 /** The player and the primary target used by every card test. */
 export const TEST_SELF: EntityId = entityId('player');
@@ -40,6 +40,8 @@ export interface CombatantExpect {
   readonly poison?: number;
   readonly power?: number;
   readonly bravery?: number;
+  /** The Writer's banked Craft. */
+  readonly craft?: number;
   /** Expected number of clouds (of any type) in play. */
   readonly clouds?: number;
   /** Expected number of minions in play. */
@@ -207,6 +209,7 @@ export function snapshotExpect(
     poison: c.poison,
     power: c.power,
     bravery: c.bravery,
+    craft: c.craft,
     clouds: c.clouds.length,
     minions: c.minions.length,
   });
@@ -240,6 +243,7 @@ function compareCombatant(
   push('poison', expected.poison, actual.poison);
   push('power', expected.power, actual.power);
   push('bravery', expected.bravery, actual.bravery);
+  push('craft', expected.craft, actual.craft);
   push('clouds', expected.clouds, actual.clouds.length);
   push('minions', expected.minions, actual.minions.length);
 }

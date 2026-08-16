@@ -11,10 +11,10 @@
  * and reacts to `events`; it never mutates either. Every event carries enough to
  * render a game-log line (see docs/atomic-actions.md).
  */
-import type { CardId, CloudType, EntityId, ScaleMetric } from '@shared/index';
-import { entityId } from '@shared/index';
-import type { CardInstance, Combatant, GameState, MinionState, PendingChoice, Phase } from '@engine/state/index';
-import { cardIdsOf } from '@engine/state/index';
+import type { CardId, CloudType, EntityId, MarkKind, Marks, ScaleMetric } from '@shared/index';
+import { entityId, MARK_KINDS } from '@shared/index';
+import type { CardInstance, Combatant, GameState, MinionState, NextTurnBonus, PendingChoice, Phase } from '@engine/state/index';
+import { cardIdsOf, NO_NEXT_TURN } from '@engine/state/index';
 import type { Action } from '@engine/actions/index';
 import { nextInt, shuffle } from '@engine/rng/index';
 
@@ -25,7 +25,7 @@ export type GameEvent =
   | { readonly type: 'TurnStarted'; readonly turn: number }
   | { readonly type: 'TurnEnded'; readonly turn: number }
   | { readonly type: 'PhaseChanged'; readonly phase: Phase }
-  /** `instances` carries the copies — Paper Trail keys off a drawn copy's Unplayable flag. */
+  /** `instances` carries the copies, so a trigger can read their per-copy keywords. */
   | { readonly type: 'CardsDrawn'; readonly owner: EntityId; readonly cards: readonly CardId[]; readonly instances: readonly CardInstance[] }
   /**
    * Cards left a hand for the discard pile. Only `'discard'` is a discard in the
@@ -53,12 +53,36 @@ export type GameEvent =
   /** Cards moved discard -> draw pile. */
   | { readonly type: 'CardsRecovered'; readonly owner: EntityId; readonly cards: readonly CardId[] }
   | { readonly type: 'CardReturnedToHand'; readonly owner: EntityId; readonly cardId: CardId }
-  | { readonly type: 'MoltGranted'; readonly owner: EntityId; readonly cards: readonly CardId[] }
-  | { readonly type: 'UnplayableGranted'; readonly owner: EntityId; readonly cards: readonly CardId[] }
-  /** Unplayable cards spent by Burn — the cards layer plays their effects for free. */
-  | { readonly type: 'CardsBurned'; readonly owner: EntityId; readonly cards: readonly CardId[]; readonly instances: readonly CardInstance[] }
+  /** A per-copy keyword (Molt / Add / Fading) was granted to cards in hand. */
+  | {
+      readonly type: 'KeywordGranted';
+      readonly owner: EntityId;
+      readonly keyword: 'molt' | 'add' | 'fading';
+      readonly cards: readonly CardId[];
+    }
+  /** Cards in hand gained (or lost, on `ClearMarks`) the Knight's Markings. */
+  | {
+      readonly type: 'CardsMarked';
+      readonly owner: EntityId;
+      readonly mark: MarkKind | null;
+      readonly value: number;
+      readonly cards: readonly CardId[];
+    }
   | { readonly type: 'BraverySet'; readonly target: EntityId; readonly amount: number }
-  /** The battle paused on a choice (discard/burn/cloud/minion/recover); input should collect picks. */
+  | { readonly type: 'CraftChanged'; readonly target: EntityId; readonly amount: number }
+  /** Craft spent by Burn — "when you Burn, …" persistents key off this. */
+  | { readonly type: 'CraftBurned'; readonly target: EntityId; readonly amount: number }
+  | { readonly type: 'AddWindowSet'; readonly target: EntityId; readonly value: boolean }
+  | { readonly type: 'CardAdded'; readonly owner: EntityId }
+  | {
+      readonly type: 'NextTurnGranted';
+      readonly target: EntityId;
+      readonly resource: 'energy' | 'power' | 'bravery' | 'craft' | 'shield';
+      readonly amount: number;
+    }
+  /** Self-inflicted HP loss (ignores block/shield) — the Old Lady's cost. */
+  | { readonly type: 'HpLost'; readonly target: EntityId; readonly amount: number }
+  /** The battle paused on a choice (discard/cloud/minion/recover); input should collect picks. */
   | { readonly type: 'ChoiceRequested'; readonly kind: PendingChoice['kind']; readonly owner: EntityId; readonly count: number }
   | { readonly type: 'ChoiceCleared' }
   | { readonly type: 'EnergySet'; readonly target: EntityId; readonly amount: number }
@@ -82,6 +106,7 @@ export type GameEvent =
   | { readonly type: 'VenomRetainsSet'; readonly target: EntityId; readonly value: boolean }
   | { readonly type: 'CardPlayed'; readonly owner: EntityId }
   | { readonly type: 'MinionReplayed'; readonly owner: EntityId }
+  | { readonly type: 'MarkedCardPlayed'; readonly owner: EntityId; readonly mark: MarkKind }
   | { readonly type: 'MinionSummoned'; readonly owner: EntityId; readonly cardId: CardId }
   | { readonly type: 'MinionDiscarded'; readonly owner: EntityId; readonly count: number }
   | { readonly type: 'PersistentAdded'; readonly target: EntityId; readonly cardId: CardId };
@@ -121,7 +146,11 @@ export function apply(state: GameState, action: Action): ApplyResult {
           discardedThisTurn: 0,
           cardsPlayedThisTurn: 0,
           braveryApplied: false,
-          unplayablesFound: 0,
+          powerApplied: false,
+          craftBurned: 0,
+          // A Blank window never survives the turn it was opened in.
+          addWindow: false,
+          cardsAdded: 0,
         })),
         events: [{ type: 'TurnCountersCleared', target: action.target }],
       };
@@ -158,7 +187,15 @@ export function apply(state: GameState, action: Action): ApplyResult {
       return drawCards(state, action.owner ?? state.player.id, action.count);
 
     case 'DealDamage':
-      return dealDamage(state, action.target, action.amount);
+      return dealDamage(state, action.target, action.amount, action.self);
+
+    case 'LoseHp': {
+      const amount = Math.max(0, action.amount);
+      return {
+        state: mapCombatant(state, action.target, (c) => ({ ...c, hp: Math.max(0, c.hp - amount) })),
+        events: [{ type: 'HpLost', target: action.target, amount }],
+      };
+    }
 
     case 'GainBlock':
       return gainResource(state, action.target, 'block', action.amount);
@@ -194,10 +231,35 @@ export function apply(state: GameState, action: Action): ApplyResult {
       };
 
     case 'GainPower':
+      return gainPower(state, action.target, action.amount);
+
+    case 'GainPowerAll': {
+      let cur = state;
+      const events: GameEvent[] = [];
+      for (const opp of opponentsOf(state, action.self).filter((o) => o.hp > 0)) {
+        const r = gainPower(cur, opp.id, action.amount);
+        cur = r.state;
+        events.push(...r.events);
+      }
+      return { state: cur, events };
+    }
+
+    case 'ConvertPowerToHeal': {
+      const c = findCombatant(state, action.target);
+      const amount = c?.power ?? 0;
+      const healed = mapCombatant(state, action.target, (cc) => ({
+        ...cc,
+        power: 0,
+        hp: Math.min(cc.maxHp, cc.hp + amount),
+      }));
       return {
-        state: mapCombatant(state, action.target, (c) => ({ ...c, power: c.power + action.amount })),
-        events: [{ type: 'PowerGained', target: action.target, amount: action.amount }],
+        state: healed,
+        events: [
+          { type: 'PowerGained', target: action.target, amount: -amount },
+          { type: 'Healed', target: action.target, amount },
+        ],
       };
+    }
 
     case 'GainBravery':
       return {
@@ -282,26 +344,175 @@ export function apply(state: GameState, action: Action): ApplyResult {
       };
     }
 
-    case 'AddMoltToHand': {
-      // No UI for "choose a card", so it grants to the leftmost unmarked copies
-      // — deterministic and replayable. It can't skip cards that already have
-      // Molt from their *text*: that lives in the card language, which the
-      // engine deliberately knows nothing about. Re-marking one is harmless.
+    case 'AddKeywordToHand': {
+      // No UI for "choose a card", so it grants to the leftmost copies that
+      // don't already carry the keyword — deterministic and replayable. Printed
+      // keywords are stamped onto copies by the cards layer, so this sees a
+      // printed Molt/Add/Fading exactly as it sees a granted one.
       const c = findCombatant(state, action.owner);
       if (!c) return { state, events: [] };
       let left = Math.max(0, action.count);
       const granted: CardId[] = [];
       const hand = c.hand.map((inst) => {
-        if (left <= 0 || inst.molt) return inst;
+        if (left <= 0 || inst[action.keyword] === true) return inst;
         left -= 1;
         granted.push(inst.cardId);
-        return { ...inst, molt: true };
+        return { ...inst, [action.keyword]: true };
       });
       if (granted.length === 0) return { state, events: [] };
       return {
         state: mapCombatant(state, action.owner, (cc) => ({ ...cc, hand })),
-        events: [{ type: 'MoltGranted', owner: action.owner, cards: granted }],
+        events: [{ type: 'KeywordGranted', owner: action.owner, keyword: action.keyword, cards: granted }],
       };
+    }
+
+    case 'GainCraft': {
+      const amount = action.amount;
+      return {
+        state: mapCombatant(state, action.target, (c) => ({ ...c, craft: Math.max(0, c.craft + amount) })),
+        events: [{ type: 'CraftChanged', target: action.target, amount }],
+      };
+    }
+
+    case 'SetCraft':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({ ...c, craft: Math.max(0, action.amount) })),
+        events: [{ type: 'CraftChanged', target: action.target, amount: Math.max(0, action.amount) }],
+      };
+
+    case 'BurnCraft': {
+      const c = findCombatant(state, action.target);
+      // "Burn All" (no amount) takes everything; a counted Burn can only spend
+      // what's there, so an under-funded burn is partial rather than negative.
+      const spent = Math.min(c?.craft ?? 0, action.amount ?? (c?.craft ?? 0));
+      if (spent <= 0) return { state, events: [{ type: 'CraftBurned', target: action.target, amount: 0 }] };
+      return {
+        state: mapCombatant(state, action.target, (cc) => ({
+          ...cc,
+          craft: cc.craft - spent,
+          craftBurned: cc.craftBurned + spent,
+        })),
+        events: [{ type: 'CraftBurned', target: action.target, amount: spent }],
+      };
+    }
+
+    case 'DiscardFading': {
+      const c = findCombatant(state, action.owner);
+      if (!c) return { state, events: [] };
+      const uids = c.hand.filter((inst) => inst.fading === true).map((inst) => inst.uid);
+      if (uids.length === 0) return { state, events: [] };
+      return discardCards(state, action.owner, uids.length, uids);
+    }
+
+    case 'SetAddWindow':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({
+          ...c,
+          addWindow: action.value,
+          // Opening a window starts a fresh count; closing one leaves the total
+          // alone, so an Add played last still counts for the card that reads it.
+          cardsAdded: action.value ? 0 : c.cardsAdded,
+        })),
+        events: [{ type: 'AddWindowSet', target: action.target, value: action.value }],
+      };
+
+    case 'NoteCardAdded':
+      return {
+        state: mapCombatant(state, action.owner, (c) => ({ ...c, cardsAdded: c.cardsAdded + 1 })),
+        events: [{ type: 'CardAdded', owner: action.owner }],
+      };
+
+    case 'GrantNextTurn':
+      return {
+        state: mapCombatant(state, action.target, (c) => ({
+          ...c,
+          nextTurn: { ...c.nextTurn, [action.resource]: c.nextTurn[action.resource] + action.amount },
+        })),
+        events: [
+          { type: 'NextTurnGranted', target: action.target, resource: action.resource, amount: action.amount },
+        ],
+      };
+
+    case 'ApplyNextTurn': {
+      const c = findCombatant(state, action.target);
+      if (!c) return { state, events: [] };
+      const owed = c.nextTurn;
+      const cleared = mapCombatant(state, action.target, (cc) => ({ ...cc, nextTurn: NO_NEXT_TURN }));
+      let cur = cleared;
+      const events: GameEvent[] = [];
+      for (const [resource, amount] of Object.entries(owed) as [keyof NextTurnBonus, number][]) {
+        if (amount === 0) continue;
+        const r = apply(cur, payout(action.target, resource, amount));
+        cur = r.state;
+        events.push(...r.events);
+      }
+      return { state: cur, events };
+    }
+
+    case 'MarkCards':
+      return markCards(state, action.owner, action.mark, action.value, action.count, action.scope);
+
+    case 'MarkCardsRandomKind': {
+      // One RNG draw per card, so two cards marked by the same Chisel can come
+      // out differently — and it still replays identically from the seed.
+      let cur = state;
+      const events: GameEvent[] = [];
+      for (let i = 0; i < Math.max(0, action.count); i++) {
+        const pick = nextInt(cur.rng, 0, MARK_KINDS.length - 1);
+        const r = markCards({ ...cur, rng: pick.state }, action.owner, MARK_KINDS[pick.value]!, action.value, 1, 'random');
+        cur = r.state;
+        events.push(...r.events);
+      }
+      return { state: cur, events };
+    }
+
+    case 'ClearMarks': {
+      const c = findCombatant(state, action.owner);
+      if (!c) return { state, events: [] };
+      const cleared = c.hand.filter((inst) => inst.marks).map((inst) => inst.cardId);
+      if (cleared.length === 0) return { state, events: [] };
+      const hand = c.hand.map((inst) => {
+        if (!inst.marks) return inst;
+        const { marks, ...rest } = inst;
+        void marks;
+        return rest;
+      });
+      return {
+        state: mapCombatant(state, action.owner, (cc) => ({ ...cc, hand })),
+        events: [{ type: 'CardsMarked', owner: action.owner, mark: null, value: 0, cards: cleared }],
+      };
+    }
+
+    case 'DoubleResource': {
+      const c = findCombatant(state, action.target);
+      const amount = c?.[action.resource] ?? 0;
+      if (amount <= 0) return { state, events: [] };
+      const next = mapCombatant(state, action.target, (cc) => ({ ...cc, [action.resource]: amount * 2 }));
+      const event: GameEvent =
+        action.resource === 'bravery'
+          ? { type: 'BraveryGained', target: action.target, amount }
+          : action.resource === 'poison'
+            ? { type: 'PoisonChanged', target: action.target, amount }
+            : { type: 'CraftChanged', target: action.target, amount };
+      return { state: next, events: [event] };
+    }
+
+    case 'DefenseToBravery': {
+      const c = findCombatant(state, action.target);
+      const defense = (c?.block ?? 0) + (c?.shield ?? 0);
+      if (defense <= 0) return { state, events: [] };
+      const next = mapCombatant(state, action.target, (cc) => ({
+        ...cc,
+        block: 0,
+        shield: 0,
+        bravery: action.gain ? cc.bravery + defense : cc.bravery,
+      }));
+      const events: GameEvent[] = [
+        { type: 'BlockCleared', target: action.target },
+        { type: 'ShieldGained', target: action.target, amount: -(c?.shield ?? 0) },
+      ];
+      if (action.gain) events.push({ type: 'BraveryGained', target: action.target, amount: defense });
+      return { state: next, events };
     }
 
     case 'AddMoltToDrawTop': {
@@ -313,7 +524,7 @@ export function apply(state: GameState, action: Action): ApplyResult {
           ...cc,
           drawPile: [{ ...top, molt: true }, ...cc.drawPile.slice(1)],
         })),
-        events: [{ type: 'MoltGranted', owner: action.owner, cards: [top.cardId] }],
+        events: [{ type: 'KeywordGranted', owner: action.owner, keyword: 'molt', cards: [top.cardId] }],
       };
     }
 
@@ -321,19 +532,22 @@ export function apply(state: GameState, action: Action): ApplyResult {
       return discardMinion(state, action.owner, findCombatant(state, action.owner)?.minions.length ?? 0);
 
     case 'NoteCardPlayed':
-      // Also zero `unplayablesFound`, so a card's "if you find …" riders can only
-      // read a Find from THIS play, never a stale one from an earlier card.
+      // Also zero `craftBurned`, so "damage equal to the craft burnt this way"
+      // can only read THIS play's Burn, never a stale one from an earlier card.
       return {
         state: mapCombatant(state, action.owner, (c) => ({
           ...c,
           cardsPlayedThisTurn: c.cardsPlayedThisTurn + 1,
-          unplayablesFound: 0,
+          craftBurned: 0,
         })),
         events: [{ type: 'CardPlayed', owner: action.owner }],
       };
 
     case 'NoteMinionReplayed':
       return { state, events: [{ type: 'MinionReplayed', owner: action.owner }] };
+
+    case 'NoteMarkedCardPlayed':
+      return { state, events: [{ type: 'MarkedCardPlayed', owner: action.owner, mark: action.mark }] };
 
     case 'SetCloudsPlayTwice':
       return {
@@ -378,40 +592,16 @@ export function apply(state: GameState, action: Action): ApplyResult {
       };
 
     case 'Venom':
-      return venom(state, action.self, action.target);
+      return venom(state, action.self, action.target, action.keepHalf === true);
 
     case 'Drink':
-      return drink(state, action.self);
+      return drink(state, action.self, action.keepHalf === true);
 
     case 'SummonMinion':
       return summonMinion(state, action.owner, action.cardId);
 
     case 'DiscardMinion':
       return discardMinion(state, action.owner, action.count, action.indices);
-
-    case 'AddUnplayableToHand': {
-      // Leftmost unmarked copies, like AddMoltToHand — but because printed
-      // Unplayable is stamped onto copies (see CardInstance.unplayable), this
-      // correctly skips cards that are already Unplayable either way.
-      const c = findCombatant(state, action.owner);
-      if (!c) return { state, events: [] };
-      let left = Math.max(0, action.count);
-      const granted: CardId[] = [];
-      const hand = c.hand.map((inst) => {
-        if (left <= 0 || inst.unplayable) return inst;
-        left -= 1;
-        granted.push(inst.cardId);
-        return { ...inst, unplayable: true };
-      });
-      if (granted.length === 0) return { state, events: [] };
-      return {
-        state: mapCombatant(state, action.owner, (cc) => ({ ...cc, hand })),
-        events: [{ type: 'UnplayableGranted', owner: action.owner, cards: granted }],
-      };
-    }
-
-    case 'BurnCards':
-      return burnCards(state, action.owner, action.count, action.uids);
 
     case 'SetPendingChoice':
       return {
@@ -431,21 +621,6 @@ export function apply(state: GameState, action: Action): ApplyResult {
       const { pending, ...cleared } = state;
       void pending;
       return { state: cleared, events: [{ type: 'ChoiceCleared' }] };
-    }
-
-    case 'FindDraw': {
-      const drawn = drawCards(state, action.owner, action.count);
-      const found = drawn.drawn.filter((inst) => inst.unplayable).length;
-      return {
-        state: mapCombatant(drawn.state, action.owner, (c) => ({ ...c, unplayablesFound: found })),
-        events: drawn.events,
-      };
-    }
-
-    case 'IfFoundUnplayable': {
-      const c = findCombatant(state, action.owner);
-      if (!c || c.unplayablesFound <= 0) return { state, events: [] };
-      return apply(state, action.action);
     }
 
     case 'SetBravery':
@@ -522,6 +697,10 @@ export function metricValue(state: GameState, id: EntityId, metric: ScaleMetric)
       return c.power;
     case 'bravery':
       return c.bravery;
+    case 'craft':
+      return c.craft;
+    case 'craftBurned':
+      return c.craftBurned;
     case 'clouds':
       return c.clouds.length;
     case 'uniqueClouds':
@@ -542,6 +721,12 @@ export function metricValue(state: GameState, id: EntityId, metric: ScaleMetric)
       return c.minionsDiscarded;
     case 'minions':
       return c.minions.length;
+    case 'cardsAdded':
+      return c.cardsAdded;
+    case 'blankCardsInHand':
+      return c.hand.filter((inst) => inst.blank === true).length;
+    case 'fadingCardsInHand':
+      return c.hand.filter((inst) => inst.fading === true).length;
   }
 }
 
@@ -582,45 +767,6 @@ function drawCards(
   };
 }
 
-/**
- * Burn: move up to `count` Unplayable copies (leftmost first; all of them when
- * `count` is omitted) from the hand to the discard pile. Selection is by the
- * instance's `unplayable` flag — the cards layer stamps printed Unplayable onto
- * copies, so the reducer never needs to read card text. Deliberately NOT counted
- * in `discardedThisTurn`: Burn is its own mechanic, not a hand discard, and it
- * raises `CardsBurned` (which plays the burned effects) rather than
- * `CardsDiscarded` (which would set off Molt).
- */
-function burnCards(
-  state: GameState,
-  owner: EntityId,
-  count: number | undefined,
-  uids?: readonly number[],
-): ApplyResult {
-  const c = findCombatant(state, owner);
-  if (!c) return { state, events: [{ type: 'CardsBurned', owner, cards: [], instances: [] }] };
-  // With `uids` (a player's pick), burn exactly those copies — still only ones
-  // actually flagged Unplayable, so a bad selection can't burn a playable card.
-  // Otherwise leftmost-first, up to `count` (all of them when count is omitted).
-  const chosen = uids ? new Set(uids) : null;
-  let left = chosen ? c.hand.length : (count ?? c.hand.length);
-  const burned: CardInstance[] = [];
-  const hand = c.hand.filter((inst) => {
-    if (left <= 0 || !inst.unplayable || (chosen !== null && !chosen.has(inst.uid))) return true;
-    left -= 1;
-    burned.push(inst);
-    return false;
-  });
-  return {
-    state: mapCombatant(state, owner, (cc) => ({
-      ...cc,
-      hand,
-      discardPile: [...cc.discardPile, ...burned],
-    })),
-    events: [{ type: 'CardsBurned', owner, cards: cardIdsOf(burned), instances: burned }],
-  };
-}
-
 /** The combatant that owns the minion with this id, if `id` is a minion. */
 function minionOwner(state: GameState, id: EntityId): EntityId | undefined {
   const all = [state.player, ...state.enemies];
@@ -632,31 +778,45 @@ function minionOwner(state: GameState, id: EntityId): EntityId | undefined {
  * Damage soaks block first, then shield, then hits hp. If the target is a MINION,
  * the minion soaks the whole attack and is discarded (the Wizard's decoy rule),
  * emitting MinionDiscarded so triggers like Consuming fire.
+ *
+ * When `self` is given, the Old Lady's **Power** applies: the first attack that
+ * combatant makes on its turn deals `power` extra. The charge isn't spent (it
+ * decays a point per turn instead), but it lands only once — `powerApplied`,
+ * cleared by ClearTurnCounters. Damage with no named attacker is unbuffed, which
+ * is what start-of-turn Storm clouds and persistent triggers want.
  */
-function dealDamage(state: GameState, target: EntityId, amount: number): ApplyResult {
-  const owner = minionOwner(state, target);
+function dealDamage(state: GameState, target: EntityId, amount: number, self?: EntityId): ApplyResult {
+  const attacker = self ? findCombatant(state, self) : undefined;
+  const powered =
+    attacker !== undefined && amount > 0 && attacker.power > 0 && !attacker.powerApplied && self !== target;
+  const total = powered ? amount + attacker.power : amount;
+  const withCharge = powered
+    ? mapCombatant(state, self!, (c) => ({ ...c, powerApplied: true }))
+    : state;
+
+  const owner = minionOwner(withCharge, target);
   if (owner) {
     return {
-      state: mapCombatant(state, owner, (c) => ({ ...c, minions: c.minions.filter((m) => m.id !== target) })),
+      state: mapCombatant(withCharge, owner, (c) => ({ ...c, minions: c.minions.filter((m) => m.id !== target) })),
       events: [{ type: 'MinionDiscarded', owner, count: 1 }],
     };
   }
 
-  const current = findCombatant(state, target);
-  const fromBlock = Math.min(current?.block ?? 0, amount);
-  const fromShield = Math.min(current?.shield ?? 0, amount - fromBlock);
-  const unblocked = amount - fromBlock - fromShield;
+  const current = findCombatant(withCharge, target);
+  const fromBlock = Math.min(current?.block ?? 0, total);
+  const fromShield = Math.min(current?.shield ?? 0, total - fromBlock);
+  const unblocked = total - fromBlock - fromShield;
 
   const hit = (c: Combatant): Combatant => ({
     ...c,
-    block: c.block - Math.min(c.block, amount),
-    shield: c.shield - Math.min(c.shield, amount - Math.min(c.block, amount)),
+    block: c.block - fromBlock,
+    shield: c.shield - fromShield,
     hp: Math.max(0, c.hp - unblocked),
   });
 
   return {
-    state: mapCombatant(state, target, hit),
-    events: [{ type: 'DamageDealt', target, amount, unblocked }],
+    state: mapCombatant(withCharge, target, hit),
+    events: [{ type: 'DamageDealt', target, amount: total, unblocked }],
   };
 }
 
@@ -665,7 +825,83 @@ function dealDamageToRandomEnemy(state: GameState, self: EntityId, amount: numbe
   if (living.length === 0) return { state, events: [] };
   const draw = nextInt(state.rng, 0, living.length - 1);
   const target = living[draw.value]!.id;
-  return dealDamage({ ...state, rng: draw.state }, target, amount);
+  return dealDamage({ ...state, rng: draw.state }, target, amount, self);
+}
+
+/** Raise/lower Power, clamped at zero ("Lose 1 Power" can't go negative). */
+function gainPower(state: GameState, target: EntityId, amount: number): ApplyResult {
+  const c = findCombatant(state, target);
+  const applied = Math.max(-(c?.power ?? 0), amount);
+  if (applied === 0) return { state, events: [{ type: 'PowerGained', target, amount: 0 }] };
+  return {
+    state: mapCombatant(state, target, (cc) => ({ ...cc, power: Math.max(0, cc.power + amount) })),
+    events: [{ type: 'PowerGained', target, amount: applied }],
+  };
+}
+
+/** The action that pays out one promised next-turn resource. */
+function payout(target: EntityId, resource: keyof NextTurnBonus, amount: number): Action {
+  switch (resource) {
+    case 'energy':
+      return { type: 'GainEnergy', target, amount };
+    case 'power':
+      return { type: 'GainPower', target, amount };
+    case 'bravery':
+      return { type: 'GainBravery', target, amount };
+    case 'craft':
+      return { type: 'GainCraft', target, amount };
+    case 'shield':
+      return { type: 'GainShield', target, amount };
+  }
+}
+
+/**
+ * Add a Marking to cards in hand. `scope` picks which: the leftmost `count`
+ * (`'hand'`), `count` drawn through the in-state RNG (`'random'`), or all of
+ * them (`'all'`). Marking an already-marked card raises that marking's value,
+ * which is what "increase the value of Sharp on that card by 1" relies on.
+ */
+function markCards(
+  state: GameState,
+  owner: EntityId,
+  mark: MarkKind,
+  value: number,
+  count: number,
+  scope: 'hand' | 'random' | 'all',
+): ApplyResult {
+  const c = findCombatant(state, owner);
+  if (!c || c.hand.length === 0 || value === 0) {
+    return { state, events: [{ type: 'CardsMarked', owner, mark, value, cards: [] }] };
+  }
+
+  let rng = state.rng;
+  const chosen = new Set<number>();
+  if (scope === 'all') {
+    for (const inst of c.hand) chosen.add(inst.uid);
+  } else if (scope === 'random') {
+    const pool = c.hand.slice();
+    for (let i = 0; i < Math.min(Math.max(0, count), c.hand.length); i++) {
+      const draw = nextInt(rng, 0, pool.length - 1);
+      rng = draw.state;
+      chosen.add(pool[draw.value]!.uid);
+      pool.splice(draw.value, 1);
+    }
+  } else {
+    for (const inst of c.hand.slice(0, Math.max(0, count))) chosen.add(inst.uid);
+  }
+  if (chosen.size === 0) return { state, events: [{ type: 'CardsMarked', owner, mark, value, cards: [] }] };
+
+  const marked: CardId[] = [];
+  const hand = c.hand.map((inst) => {
+    if (!chosen.has(inst.uid)) return inst;
+    marked.push(inst.cardId);
+    const marks: Marks = { ...inst.marks, [mark]: (inst.marks?.[mark] ?? 0) + value };
+    return { ...inst, marks };
+  });
+  return {
+    state: { ...mapCombatant(state, owner, (cc) => ({ ...cc, hand })), rng },
+    events: [{ type: 'CardsMarked', owner, mark, value, cards: marked }],
+  };
 }
 
 function discardCards(
@@ -745,7 +981,7 @@ function createClouds(
 function gainResource(
   state: GameState,
   target: EntityId,
-  resource: 'block' | 'shield' | 'energy' | 'power' | 'bravery' | 'poison',
+  resource: 'block' | 'shield' | 'energy' | 'power' | 'bravery' | 'poison' | 'craft',
   baseAmount: number,
 ): ApplyResult {
   // Bravery (the Writer): the first block/shield gain of the turn is boosted by
@@ -774,7 +1010,9 @@ function gainResource(
             ? { type: 'PowerGained', target, amount }
             : resource === 'bravery'
               ? { type: 'BraveryGained', target, amount }
-              : { type: 'PoisonChanged', target, amount };
+              : resource === 'craft'
+                ? { type: 'CraftChanged', target, amount }
+                : { type: 'PoisonChanged', target, amount };
   return { state: next, events: [event] };
 }
 
@@ -889,33 +1127,46 @@ function removeCloudAt(state: GameState, target: EntityId, index: number): Apply
   };
 }
 
-function venom(state: GameState, self: EntityId, target: EntityId): ApplyResult {
+/**
+ * What Poison a caster is left with after spending it. Retention (Sacrifice,
+ * Sticky Poison) keeps the lot for exactly one use; Consuming's `keepHalf`
+ * keeps half of it, rounded down, every time.
+ */
+function poisonAfterSpend(poison: number, retains: boolean, keepHalf: boolean): number {
+  if (retains) return poison;
+  return keepHalf ? Math.floor(poison / 2) : 0;
+}
+
+function venom(state: GameState, self: EntityId, target: EntityId, keepHalf = false): ApplyResult {
   const caster = findCombatant(state, self);
   const amount = caster?.poison ?? 0;
-  const damaged = dealDamage(state, target, amount);
+  const damaged = dealDamage(state, target, amount, self);
   // Sacrifice / Sticky Poison let one Venom keep its Poison. The flag is spent
   // either way, so it arms exactly one Venom.
   const retains = caster?.venomRetains ?? false;
+  const left = poisonAfterSpend(amount, retains, keepHalf);
   return {
     state: mapCombatant(damaged.state, self, (c) => ({
       ...c,
-      poison: retains ? c.poison : 0,
+      poison: left,
       venomRetains: false,
     })),
-    events: retains
-      ? damaged.events
-      : [...damaged.events, { type: 'PoisonChanged', target: self, amount: -amount }],
+    events:
+      amount === left
+        ? damaged.events
+        : [...damaged.events, { type: 'PoisonChanged', target: self, amount: left - amount }],
   };
 }
 
-function drink(state: GameState, self: EntityId): ApplyResult {
+function drink(state: GameState, self: EntityId, keepHalf = false): ApplyResult {
   const caster = findCombatant(state, self);
   const amount = caster?.poison ?? 0;
+  const left = poisonAfterSpend(amount, false, keepHalf);
   return {
-    state: mapCombatant(state, self, (c) => ({ ...c, block: c.block + amount, poison: 0 })),
+    state: mapCombatant(state, self, (c) => ({ ...c, block: c.block + amount, poison: left })),
     events: [
       { type: 'BlockGained', target: self, amount },
-      { type: 'PoisonChanged', target: self, amount: -amount },
+      { type: 'PoisonChanged', target: self, amount: left - amount },
     ],
   };
 }

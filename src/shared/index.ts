@@ -25,11 +25,25 @@ export type CloudType = 'lightning' | 'storm' | 'snow' | 'fog';
 export const CLOUD_TYPES: readonly CloudType[] = ['lightning', 'storm', 'snow', 'fog'];
 
 /**
- * The five playable characters ("wanderers"). A serializable tag carried on a
+ * The playable characters ("wanderers"). A serializable tag carried on a
  * Combatant so the UI can pick the right hero/deck art; the engine itself is
- * character-agnostic. Only `cloud` and `wizard` have authored cards today.
+ * character-agnostic.
  */
-export type CharacterId = 'cloud' | 'wizard' | 'crab' | 'oldLady' | 'writer';
+export type CharacterId = 'cloud' | 'wizard' | 'crab' | 'oldLady' | 'writer' | 'knight';
+
+/**
+ * The Knight's four Markings. A marking is per-*copy* state with a value: a card
+ * marked `Sharp 2` deals 2 damage to a random enemy when played, and then loses
+ * that marking. Lives in `shared` because the engine stores marks on a
+ * CardInstance and the DSL parses "mark a card with sharp 2".
+ */
+export type MarkKind = 'sharp' | 'sturdy' | 'flaming' | 'safe';
+
+/** All markings, in a stable order (the order Chisel randomizes over). */
+export const MARK_KINDS: readonly MarkKind[] = ['sharp', 'sturdy', 'flaming', 'safe'];
+
+/** The markings on one card copy, keyed by kind. Absent means unmarked. */
+export type Marks = Partial<Record<MarkKind, number>>;
 
 /**
  * A quantity an effect can scale off of, measured against the caster at reduce
@@ -45,6 +59,10 @@ export type ScaleMetric =
   | 'defense'
   | 'power'
   | 'bravery'
+  /** The Writer's stored Craft — "deal damage equal to your craft". */
+  | 'craft'
+  /** Craft spent by the Burn on THIS play (Dumpster Diver). Reset each card play. */
+  | 'craftBurned'
   | 'clouds'
   | 'uniqueClouds'
   /** Clouds of one kind — "for each storm cloud" (Whirlwind). */
@@ -57,8 +75,14 @@ export type ScaleMetric =
   | 'cardsDiscardedThisTurn'
   /** Cards this combatant has played since its turn began (Vial). */
   | 'cardsPlayedThisTurn'
-  /** Minions of this combatant that have been discarded (Pile Up). */
-  | 'minionsDiscarded';
+  /** Minions of this combatant that have been discarded. */
+  | 'minionsDiscarded'
+  /** Add cards played into the current Blank window (the Old Lady's Prunes). */
+  | 'cardsAdded'
+  /** Blank cards held right now (Dash). */
+  | 'blankCardsInHand'
+  /** Fading cards held right now (Evade). */
+  | 'fadingCardsInHand';
 
 /**
  * Result — the return type of every fallible pure stage (parser stages, move

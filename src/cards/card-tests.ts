@@ -36,7 +36,17 @@ import {
   CRYSTAL_BALL,
   HURL,
 } from '@cards/definitions/wizard';
-import { PEN_STAB, QUILL, PODCAST, BRAIN_STORM, TROPHY, TYPE, NOTES } from '@cards/definitions/writer';
+import {
+  PEN_STAB,
+  QUILL,
+  PODCAST,
+  BRAIN_STORM,
+  TROPHY,
+  TYPE,
+  DUMPSTER_DIVER,
+  CHEATER,
+  GAMBLE_IT_ALL,
+} from '@cards/definitions/writer';
 
 /** A stand-in minion for setups that need one already in play. */
 const dummyMinion = (cardId: CardId): MinionState => ({ id: entityId('minion-seed'), cardId });
@@ -185,22 +195,22 @@ export const CARD_TESTS: readonly CardTest[] = [
 
   // --- Writer ----------------------------------------------------------------
   {
-    name: 'Pen Stab deals 3 and gains 1 energy',
+    name: 'Pen Stab deals 3 and banks 2 craft',
     cardId: PEN_STAB.id,
     setup: { target: { hp: 30, maxHp: 30 } },
-    expect: { target: { hp: 27 }, player: { energy: 1 } },
+    expect: { target: { hp: 27 }, player: { craft: 2 } },
   },
   {
-    name: 'Quill gains 4 shields then 1 bravery (no boost at 0 bravery)',
+    name: 'Quill gains 1 shield then 2 craft (no boost at 0 bravery)',
     cardId: QUILL.id,
     setup: {},
-    expect: { player: { shield: 4, bravery: 1 } },
+    expect: { player: { shield: 1, craft: 2 } },
   },
   {
-    name: "Quill's shields are boosted by Bravery already held",
+    name: "Quill's shield is boosted by Bravery already held",
     cardId: QUILL.id,
     setup: { player: { bravery: 2 } },
-    expect: { player: { shield: 6, bravery: 3 } }, // 4 + 2 bravery
+    expect: { player: { shield: 3, bravery: 2 } }, // 1 + 2 bravery; bravery isn't spent
   },
   {
     name: 'Podcast banks bravery first, so its own shield is boosted',
@@ -215,23 +225,36 @@ export const CARD_TESTS: readonly CardTest[] = [
     expect: { target: { hp: 25 }, player: { bravery: 0 } },
   },
   {
-    name: 'Trophy burns 2 unplayable cards from hand and heals 3',
+    name: 'Trophy promises next turn rather than paying out now',
     cardId: TROPHY.id,
-    setup: { player: { hp: 40, maxHp: 50, hand: [NOTES.id, NOTES.id] } },
-    expect: { player: { hp: 43 }, handSize: 0, discardPileSize: 2 },
+    setup: {},
+    expect: { player: { shield: 0, craft: 0 } },
   },
   {
-    name: 'Type finds 2 — the rider fires when an Unplayable card comes up',
+    name: 'Type burns 3 craft and hits for 5',
     cardId: TYPE.id,
-    setup: { drawPile: [NOTES.id, 'x'] as CardId[], target: { hp: 30, maxHp: 30 } },
-    expect: { target: { hp: 28 }, handSize: 2, drawPileSize: 0 },
+    setup: { player: { craft: 4 }, target: { hp: 30, maxHp: 30 } },
+    expect: { target: { hp: 25 }, player: { craft: 1 } },
   },
   {
-    name: "Type's rider stays quiet when nothing Unplayable is found",
-    cardId: TYPE.id,
-    setup: { drawPile: ['x', 'y'] as CardId[], target: { hp: 30, maxHp: 30 } },
-    expect: { target: { hp: 30 }, handSize: 2 },
+    name: 'Dumpster Diver burns the whole bank and deals that much',
+    cardId: DUMPSTER_DIVER.id,
+    setup: { player: { craft: 6 }, target: { hp: 30, maxHp: 30 } },
+    expect: { target: { hp: 24 }, player: { craft: 0 } },
   },
+  {
+    name: 'Cheater turns all defense into bravery',
+    cardId: CHEATER.id,
+    setup: { player: { block: 2, shield: 3 } },
+    expect: { player: { bravery: 5, block: 0, shield: 0 } },
+  },
+  {
+    name: 'Gamble it All doubles bravery and strips defense',
+    cardId: GAMBLE_IT_ALL.id,
+    setup: { player: { bravery: 3, block: 4, shield: 1 } },
+    expect: { player: { bravery: 6, block: 0, shield: 0 } },
+  },
+
 ];
 
 /** All tests targeting a given card id (used by the Card Lab and the suite). */

@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
-import { CHARACTERS, RELICS, getRelic, type BattleOptions, type PlayableCharacter } from '@cards/index';
+import { CHARACTERS, RELICS, RELIC_ART, getRelic, type BattleOptions, type PlayableCharacter } from '@cards/index';
 import { Sprite } from '@ui/game/Sprite';
-import { heroSprite, SPRITE_CSS } from '@ui/game/art';
+import { heroSprite, relicIconUrl, SPRITE_CSS } from '@ui/game/art';
 import { BattleScreen } from '@ui/game/BattleScreen';
 
 /**
  * PlaySetup — the light pre-battle flow: pick a character, keep 1 of 3 relics,
- * then drop into the battle. (Cloud, Wizard, Crab and Writer have authored
- * cards today; the Old Lady comes later.)
+ * then drop into the battle. Only characters flagged `playable` are offered.
  */
 type PlayChar = PlayableCharacter;
 
@@ -16,7 +15,7 @@ const SIGNATURE_RELIC: Partial<Record<PlayChar, string>> = {
   cloud: 'lightning-rod',
   wizard: 'vial',
   crab: 'seashell',
-  writer: 'gel-pen',
+  writer: 'notebook',
 };
 
 export function PlaySetup({ onExit }: { onExit: () => void }) {
@@ -90,7 +89,19 @@ function RelicSelect({
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
         {offered.map((r) => (
           <button key={r.id} onClick={() => onChoose(r.id)} style={pickCard}>
-            <div style={{ fontSize: 40 }}>🔮</div>
+            <div style={{ height: 96, display: 'grid', placeItems: 'center' }}>
+              {RELIC_ART.has(r.name) ? (
+                <img
+                  src={relicIconUrl(r.name)}
+                  alt={r.name}
+                  width={96}
+                  height={96}
+                  style={{ imageRendering: 'pixelated' }}
+                />
+              ) : (
+                <div style={{ fontSize: 48 }}>🔮</div>
+              )}
+            </div>
             <h3 style={{ margin: '10px 0 4px' }}>{r.name}</h3>
             <p style={{ margin: 0, color: '#555', fontSize: 13 }}>{r.text}</p>
           </button>

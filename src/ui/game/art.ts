@@ -59,10 +59,19 @@ const WIZARD_HERO: Record<HeroPose, Sprite> = {
   play: sheet('art/character/wizard/Wizard-Play Card.png', 112, 112, 2, 400),
 };
 
+/** The Crab's set — the Wizard's canvas and pacing, with a 5-frame hit. */
+const CRAB_HERO: Record<HeroPose, Sprite> = {
+  idle: sheet('art/character/crab/Crab-Idle.png', 112, 112, 2, 900),
+  damage: sheet('art/character/crab/Crab-Damage.png', 112, 112, 5, 500),
+  die: sheet('art/character/crab/Crab-Die.png', 112, 112, 5, 700),
+  play: sheet('art/character/crab/Crab-Play Card.png', 112, 112, 2, 400),
+};
+
 /** Characters with authored hero art; the rest fall back to a labelled box. */
 const HEROES: Partial<Record<CharacterId, Record<HeroPose, Sprite>>> = {
   cloud: CLOUD_HERO,
   wizard: WIZARD_HERO,
+  crab: CRAB_HERO,
 };
 
 /** Hero sprite for a character + pose, or `null` if that character has no art. */
@@ -99,13 +108,81 @@ const CARD_ART_FOLDERS: Record<string, { folder: string; prefix: string }> = {
   wizard: { folder: 'wizard', prefix: 'Wizard Cards' },
   crab: { folder: 'crab', prefix: 'Crab Cards' },
   writer: { folder: 'writer', prefix: 'Writer Cards' },
+  oldLady: { folder: 'oldLady', prefix: 'Old Lady Cards' },
 };
 
-/** The card-face art for a card, chosen by its character-prefixed id. */
-export function cardArtUrl(card: { readonly id: string; readonly name: string }): string {
+/**
+ * Where a card's face lives under `assets/`, or `null` for a character whose
+ * faces aren't drawn yet (the Knight).
+ *
+ * Split out from `cardArtUrl` so the art-coverage test can check the file is
+ * really there without depending on `BASE_URL` — the file name is built from the
+ * card's **name**, so renaming a card silently orphans its art otherwise.
+ */
+export function cardArtPath(card: { readonly id: string; readonly name: string }): string | null {
   const key = card.id.split('-')[0] ?? '';
-  const { folder, prefix } = CARD_ART_FOLDERS[key] ?? CARD_ART_FOLDERS.cloud!;
-  return artUrl(`art/card/${folder}/${prefix}-${card.name}.png`);
+  const folder = CARD_ART_FOLDERS[key];
+  if (!folder) return null;
+  return `art/card/${folder.folder}/${folder.prefix}-${card.name}.png`;
+}
+
+/**
+ * The card-face art for a card, or `''` for a character whose faces aren't drawn
+ * yet. An empty src leaves the card's tinted panel and its HTML name/cost tags,
+ * which read fine on their own — better than pointing at a 404 and getting the
+ * browser's broken-image glyph.
+ */
+export function cardArtUrl(card: { readonly id: string; readonly name: string }): string {
+  const path = cardArtPath(card);
+  return path ? artUrl(path) : '';
+}
+
+/**
+ * The two-layer battle scene: a full-bleed backdrop (sky/horizon) with a
+ * foreground platform frame drawn over it, both authored per character. Missing
+ * layers fall back to the CSS gradient the screen already carries.
+ */
+export interface LevelArt {
+  readonly backdrop: string;
+  readonly platform: string;
+}
+
+const LEVEL_LABELS: Partial<Record<CharacterId, string>> = {
+  cloud: 'Cloud',
+  wizard: 'Wizard',
+  crab: 'Crab',
+  oldLady: 'Old Lady',
+  writer: 'Writer',
+};
+
+export function levelArt(character: CharacterId | undefined): LevelArt | null {
+  const label = character && LEVEL_LABELS[character];
+  if (!character || !label) return null;
+  return {
+    backdrop: artUrl(`art/level/${character}/Level BG-${label}.png`),
+    platform: artUrl(`art/level/${character}/Levels-${label}.png`),
+  };
+}
+
+/** A relic's 48×48 icon, by relic name (`Relics-Old Shield.png`). */
+export function relicIconUrl(name: string): string {
+  return artUrl(`art/relic/Relics-${name}.png`);
+}
+
+/** Characters whose Persistent cards have a status icon drawn for the HUD. */
+const STATUS_LABELS: Partial<Record<CharacterId, string>> = {
+  cloud: 'Cloud',
+  wizard: 'Wizard',
+  crab: 'Crab',
+  oldLady: 'Old Lady',
+  writer: 'Writer',
+};
+
+/** The small icon for a Persistent in play, or `''` when none is drawn. */
+export function persistentIconUrl(character: CharacterId | undefined, name: string): string {
+  const label = character && STATUS_LABELS[character];
+  if (!label) return '';
+  return artUrl(`art/status/${character}/${label} - Persistent Icons-${name}.png`);
 }
 
 /** The card-face's native pixel size (all cards share one canvas). */
@@ -115,8 +192,8 @@ export const CARD_ART_H = 144;
 /**
  * `@keyframes` for every sprite sheet we animate (injected once by the screen).
  * One entry per distinct frame-width × frame-count in use: 96 = Cloud hero,
- * 112 = Wizard hero, 48 = cloud tokens. A sheet whose pair is missing here
- * renders its first frame and never scrolls.
+ * 112 = Wizard/Crab heroes, 48 = cloud tokens. A sheet whose pair is missing
+ * here renders its first frame and never scrolls.
  */
 export const SPRITE_CSS = [
   [96, 2],

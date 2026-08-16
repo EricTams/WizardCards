@@ -232,14 +232,14 @@ export const EXPLOSION: CardDef = {
   id: cardId('wizard-explosion'),
   name: 'Explosion',
   cost: 1,
-  text: 'Poison equal to your poison. Discard your hand. Discard all minions.',
+  text: 'Double your poison. Discard your hand. Discard all minions.',
 };
 
 export const PILE_UP: CardDef = {
   id: cardId('wizard-pile-up'),
   name: 'Pile Up',
   cost: 1,
-  text: 'Gain 1 shield for each minion in your discard pile.',
+  text: 'Gain 2 shields for each minion.',
 };
 
 /** The retain arms the *next* Venom, which may be several cards later. */

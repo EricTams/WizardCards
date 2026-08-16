@@ -28,6 +28,9 @@ export function nameMap(state: GameState): Record<string, string> {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+/** A signed amount, so a loss reads "-1" rather than "+-1". */
+const signed = (n: number): string => (n < 0 ? `−${-n}` : `+${n}`);
+
 /** One event → one human line, or null for structural/no-op events (skipped). */
 export function describeEvent(e: GameEvent, names: Record<string, string>): string | null {
   const who = (id: string) => names[id] ?? 'someone';
@@ -48,9 +51,26 @@ export function describeEvent(e: GameEvent, names: Record<string, string>): stri
     case 'PoisonChanged':
       return e.amount > 0 ? `+${e.amount} poison → ${who(e.target)}` : `poison spent (${-e.amount})`;
     case 'PowerGained':
-      return e.amount ? `+${e.amount} power → ${who(e.target)}` : null;
+      return e.amount ? `${signed(e.amount)} power → ${who(e.target)}` : null;
     case 'BraveryGained':
-      return e.amount ? `+${e.amount} bravery → ${who(e.target)}` : null;
+      return e.amount ? `${signed(e.amount)} bravery → ${who(e.target)}` : null;
+    case 'CraftChanged':
+      return e.amount ? `${signed(e.amount)} craft → ${who(e.target)}` : null;
+    case 'CraftBurned':
+      return e.amount ? `burned ${e.amount} craft` : null;
+    case 'HpLost':
+      return e.amount ? `−${e.amount} HP → ${who(e.target)}` : null;
+    case 'KeywordGranted':
+      return e.cards.length ? `${plural(e.cards.length, 'card')} gained ${e.keyword}` : null;
+    case 'CardsMarked':
+      if (e.cards.length === 0) return null;
+      return e.mark
+        ? `marked ${plural(e.cards.length, 'card')} with ${e.mark} ${e.value}`
+        : `${plural(e.cards.length, 'card')} lost their markings`;
+    case 'AddWindowSet':
+      return e.value ? `${who(e.target)} plays a Blank — Add cards are free` : null;
+    case 'NextTurnGranted':
+      return e.amount ? `next turn: +${e.amount} ${e.resource}` : null;
     case 'CloudsCreated':
       return e.count ? `+${plural(e.count, `${CLOUD_NAME[e.cloudType]} cloud`)} → ${who(e.target)}` : null;
     case 'CloudsRemoved':

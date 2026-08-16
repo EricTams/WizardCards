@@ -29,11 +29,24 @@ import { compile } from '@cards/compile';
 import { getCard, type CardDef } from '@cards/registry';
 import type { PlayContext } from '@cards/dsl/resolver';
 import { runWithTriggers, runTurnCascade, runOrPause, startTurn, endTurn, settleHandRefills, type RunResult } from '@cards/match/index';
-import { BASE_ENERGY, BASE_MAX_HP, DECK_SIZE, cloudCapFor, CHARACTERS, enemyDeck, getRelic } from '@cards/match/content';
-import { burnCostOf, stampPrintedKeywords } from '@cards/match/burn';
+import {
+  BASE_ENERGY,
+  BASE_MAX_HP,
+  DECK_SIZE,
+  OPENING_HAND,
+  OPENING_DISCARD,
+  cloudCapFor,
+  CHARACTERS,
+  enemyDeck,
+  getRelic,
+} from '@cards/match/content';
+import { burnCostOf, stampPrintedKeywords } from '@cards/match/keywords';
+import { markEffects } from '@cards/match/marks';
 
-export const OPENING_HAND = 5;
-export const OPENING_DISCARD = 2;
+// Re-exported from their home in `content.ts` so callers can keep importing the
+// opening-hand rules from the driver they belong to.
+export { OPENING_HAND, OPENING_DISCARD };
+
 /** Cap on the enemy AI's card plays per turn — a backstop against a loop. */
 const ENEMY_PLAY_CAP = 40;
 
@@ -135,7 +148,7 @@ export function newBattle(opts: BattleOptions): GameState {
 
   // Wrap both decks as card *instances*, numbering them from a shared counter so
   // every copy in the battle has a unique, deterministic uid. Printed keywords
-  // the engine must see (Unplayable) are stamped onto the copies here.
+  // the engine must see (Blank, Add, Fading) are stamped onto the copies here.
   const pInst = instancesOf(pDeck.deck, 0);
   const eInst = instancesOf(eDeck.value, pInst.idSeq);
   const pCards = stampPrintedKeywords(pInst.cards);
@@ -223,11 +236,21 @@ export function playFromHand(
     events.push(...r.events);
   };
 
-  run([{ type: 'SetEnergy', target: actorId, amount: actor.energy - card.cost }]);
+  run([{ type: 'SetEnergy', target: actorId, amount: actor.energy - energyCostAt(actor, handIndex) }]);
   // Counted before the card's own effects, so a card that scales off "cards
   // played this turn" (Vial) includes itself — it is, after all, being played.
   run([{ type: 'NoteCardPlayed', owner: actorId }]);
+  // The Old Lady's Blank window, resolved from the copy's keywords: a Blank
+  // card opens it (and Crossword's "when you play a Blank card" keys off that),
+  // an Add card is counted into it, and anything else shuts it.
+  if (instance.blank === true) run([{ type: 'SetAddWindow', target: actorId, value: true }]);
+  else if (instance.add === true) run([{ type: 'NoteCardAdded', owner: actorId }]);
+  else if (actor.addWindow) run([{ type: 'SetAddWindow', target: actorId, value: false }]);
   run([{ type: 'MoveHandCardToDiscard', owner: actorId, index: handIndex }]);
+  // The Knight's Markings fire as the card is played, ahead of its own text
+  // ("activate their Marked Effect when played"). The copy is in the discard by
+  // now, so its marks are spent with it — nothing has to erase them.
+  run(markEffects(instance, actorId));
   const compiled = compile(card.text);
   if (compiled.ok) {
     const ctx: PlayContext = { self: actorId, target, sourceCard: cardId };
@@ -255,8 +278,6 @@ function eligiblePicks(state: GameState, pending: NonNullable<GameState['pending
   switch (pending.kind) {
     case 'discard':
       return new Set(c.hand.map((inst) => inst.uid));
-    case 'burn':
-      return new Set(c.hand.filter((inst) => inst.unplayable === true).map((inst) => inst.uid));
     case 'cloud':
       return new Set(c.clouds.map((_, i) => i));
     case 'minion':
@@ -293,7 +314,7 @@ export function resolvePendingChoice(state: GameState, picks: readonly number[])
   // (each selecting action names its selector field).
   const [head, ...rest] = pending.queued;
   if (head) {
-    if (head.type === 'DiscardCards' || head.type === 'BurnCards' || head.type === 'MoveDiscardToDrawPile') {
+    if (head.type === 'DiscardCards' || head.type === 'MoveDiscardToDrawPile') {
       run(runWithTriggers(cur, [{ ...head, uids: chosen }]));
     } else if (head.type === 'RemoveClouds' || head.type === 'DiscardMinion') {
       run(runWithTriggers(cur, [{ ...head, indices: chosen }]));
@@ -338,22 +359,37 @@ export function capClouds(state: GameState, ownerId: EntityId): RunResult {
 }
 
 /**
- * Can `actor` legally play the card at `index` right now? Energy, the
- * Unplayable keyword, and Burn costs all gate it. Shared by `playFromHand`, the
- * AI's `validPlays`, and the UI's hand display, so they can never disagree —
- * an AI offered a play the engine then refuses would loop.
+ * What playing the card at `index` costs `actor` in energy right now.
+ *
+ * Two keywords make it not simply `card.cost`: an **Add** card played into an
+ * open Blank window is free ("all cards with Add are free to play"), and a
+ * **Burn** card pays in Craft instead of energy ("this card does not cost
+ * energy to play").
+ */
+export function energyCostAt(actor: Combatant, index: number): number {
+  const instance = actor.hand[index];
+  const card = instance ? getCard(instance.cardId) : undefined;
+  if (!instance || !card) return 0;
+  if (instance.add === true) return 0;
+  return burnCostOf(card) > 0 ? 0 : card.cost;
+}
+
+/**
+ * Can `actor` legally play the card at `index` right now? Energy, the Add
+ * keyword's Blank window, and Burn's Craft cost all gate it. Shared by
+ * `playFromHand`, the AI's `validPlays`, and the UI's hand display, so they can
+ * never disagree — an AI offered a play the engine then refuses would loop.
  */
 export function canPlayAt(actor: Combatant, index: number): boolean {
   const instance = actor.hand[index];
   const card = instance ? getCard(instance.cardId) : undefined;
   if (!instance || !card) return false;
-  if (actor.energy < card.cost) return false;
-  // Unplayable: never from hand — Burn spends it instead.
-  if (instance.unplayable) return false;
-  // Burn is a cost (Highlighter: "…does not COST unplayable cards to play"):
-  // without enough Unplayable cards in hand, the card can't be played.
-  const cost = burnCostOf(card);
-  return cost === 0 || actor.hand.filter((i) => i.unplayable).length >= cost;
+  // Add: "this card cannot be played regularly" — only inside a Blank window.
+  if (instance.add === true && !actor.addWindow) return false;
+  if (actor.energy < energyCostAt(actor, index)) return false;
+  // Burn is a cost (Highlighter: "the first Burn card has -2 cost"): without
+  // that much Craft banked, the card can't be played at all.
+  return actor.craft >= burnCostOf(card);
 }
 
 /** Hand indices a combatant may legally play right now (in hand + affordable). */

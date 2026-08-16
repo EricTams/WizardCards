@@ -126,7 +126,7 @@ describe('discard your hand', () => {
         drawPile: ['a', 'b', 'c', 'd', 'e'] as CardId[],
       },
     });
-    expect(endTurn(state).state.player.hand).toHaveLength(4);
+    expect(endTurn(state).state.player.hand).toHaveLength(5);
   });
 
   it('Exoskeleton stays quiet below 5 block', () => {
@@ -183,19 +183,20 @@ describe('moving cards between piles', () => {
       target: { hp: 30, maxHp: 30 },
     });
     const { state: after } = playFromHand(state, TEST_SELF, 0);
-    expect(after.enemies[0]!.hp).toBe(28);
+    expect(after.enemies[0]!.hp).toBe(27);
     expect(cardIdsOf(after.player.hand)).toEqual([SAND_KICK.id]); // back in hand…
     expect(after.player.discardPile).toHaveLength(0); // …not left in the discard
   });
 
-  it('Sand Kick also returns itself when discarded, via Molt', () => {
+  it('Sand Kick no longer carries Molt — discarding it is just a discard', () => {
     const state = buildTestState({
       player: { energy: 0, hand: [SAND_KICK.id] },
       target: { hp: 30, maxHp: 30 },
     });
     const { state: after } = applyWithTriggers(state, { type: 'DiscardCards', owner: TEST_SELF, count: 1 });
-    expect(after.enemies[0]!.hp).toBe(28);
-    expect(cardIdsOf(after.player.hand)).toEqual([SAND_KICK.id]);
+    expect(after.enemies[0]!.hp).toBe(30);
+    expect(after.player.hand).toHaveLength(0);
+    expect(cardIdsOf(after.player.discardPile)).toEqual([SAND_KICK.id]);
   });
 
   it('Tentacles goes back into the draw pile instead of the discard', () => {

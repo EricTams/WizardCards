@@ -50,12 +50,12 @@ export const STATIC: CardDef = {
   text: 'Whenever a lightning cloud is removed, deal 2 damage to all opponents.',
 };
 
-/** Churn the sky: swap one cloud for a fresh random one each turn. */
+/** Squeeze one last effect out of every cloud you send away. */
 export const WILD_WIND: CardDef = {
   id: cardId('cloud-wild-wind'),
   name: 'Wild Wind',
   cost: 1,
-  text: 'At the end of your turn, remove 1 random cloud, create 1 random cloud.',
+  text: 'Clouds play their effect when they are removed.',
 };
 
 export const WINDMILL: CardDef = {

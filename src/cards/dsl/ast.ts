@@ -10,7 +10,7 @@
  * vary in shape: `Venom` has no amount, `Heal 3` has no noun, `Create 2 storm
  * clouds` carries a cloud type. The resolver validates the combination per verb.
  */
-import type { CloudType, ScaleMetric } from '@shared/index';
+import type { CloudType, MarkKind, ScaleMetric } from '@shared/index';
 
 /**
  * A scaled amount: the effect's `amount` (default 1) times a metric measured at
@@ -28,6 +28,8 @@ export type Verb =
   | 'heal'
   | 'poison'
   | 'draw'
+  /** The Old Lady's self-inflicted costs: "lose 2 HP", "lose 1 power". */
+  | 'lose'
   // cloud effects
   | 'create'
   | 'remove'
@@ -43,9 +45,11 @@ export type Verb =
   // minion effects
   | 'discard'
   // the Writer's mechanics
+  | 'craft'
   | 'burn'
-  | 'find'
   | 'set'
+  /** The Knight's Markings: "mark 2 cards in your hand with sharp 1". */
+  | 'mark'
   // bare keyword effects (no amount / noun)
   | 'venom'
   | 'drink'
@@ -67,11 +71,19 @@ export interface EffectNode {
   readonly scale?: ScaleSpec;
   /** Explicit target ("to all opponents"). */
   readonly target?: EffectTarget;
+  /** For `mark`: which Marking, and which cards in hand to put it on. */
+  readonly mark?: MarkKind | 'random';
+  readonly scope?: 'hand' | 'random' | 'all';
   /**
-   * Set on effects from an "If you find an unplayable card, …" sentence: the
-   * effect applies only when the play's last Find drew an Unplayable card.
+   * How many *cards* an effect acts on, where `amount` is already the effect's
+   * value: "mark 2 cards with sharp 1" is `count: 2, amount: 1`.
    */
-  readonly when?: 'foundUnplayable';
+  readonly count?: number;
+  /**
+   * Set on effects from a "Next turn, …" sentence: rather than happening now,
+   * the resource is promised for the start of the caster's next turn.
+   */
+  readonly when?: 'nextTurn';
   /** Source span [start, end) so tools can map a node back to the text. */
   readonly start: number;
   readonly end: number;
@@ -87,8 +99,16 @@ export type TriggerEventKind =
   | 'discardCard'
   | 'discardMoltCard'
   | 'shuffleDeck'
-  | 'burnCard'
-  | 'drawUnplayableCard'
+  /** The Writer: "when you Burn, …" — Craft spent, whatever spent it. */
+  | 'burn'
+  /** The Old Lady: "when you lose HP on your turn, …" (Sharpen). */
+  | 'loseHp'
+  /** The Old Lady: "when you Add a card, …" (Revenge). */
+  | 'addCard'
+  /** The Old Lady: "when you play a Blank card, …" (Crossword). */
+  | 'playBlankCard'
+  /** The Knight: "when you play a card Marked with Sharp, …" (Engrave). */
+  | 'playMarkedCard'
   | 'startTurn'
   | 'endTurn';
 
@@ -106,6 +126,8 @@ export interface TriggerNode {
   readonly event: TriggerEventKind;
   /** For `removeCloud`: only fire when this cloud type is removed. */
   readonly cloudType?: CloudType;
+  /** For `playMarkedCard`: only fire for this Marking. */
+  readonly mark?: MarkKind;
   readonly condition?: TriggerCondition;
   readonly effects: readonly EffectNode[];
   readonly start: number;
@@ -113,14 +135,25 @@ export interface TriggerNode {
 }
 
 /**
- * Static rule changes that aren't trigger→effect (Winter, Fall), plus the card
- * keywords `molt` and `unplayable` — properties of the card itself rather than
- * of the board: a Molt card plays for free when discarded; an Unplayable card
- * can't be played from hand and is spent by Burn (resolved in `src/cards/match`).
+ * Static rule changes that aren't trigger→effect (Winter, Fall, Explosives),
+ * plus the per-copy card keywords — properties of the card itself rather than of
+ * the board: a Molt card plays for free when discarded, a Blank card opens the
+ * Add window, an Add card can only be played inside one, and a Fading card is
+ * discarded if it's still in hand at end of turn (all in `src/cards/match`).
  */
 export interface ModifierNode {
   readonly kind: 'Modifier';
-  readonly modifier: 'snowHealBonus' | 'suppressFogDiscard' | 'molt' | 'unplayable' | 'minionReplayBonus';
+  readonly modifier:
+    | 'snowHealBonus'
+    | 'suppressFogDiscard'
+    | 'suppressPowerDecay'
+    | 'minionReplayBonus'
+    | 'venomKeepsHalf'
+    | 'fireCloudsOnRemoval'
+    | 'molt'
+    | 'blank'
+    | 'add'
+    | 'fading';
   readonly amount?: number;
   readonly start: number;
   readonly end: number;

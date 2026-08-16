@@ -66,11 +66,11 @@ describe('scaling the resource verbs', () => {
     expect(after.player.poison).toBe(5 + 2); // Curse's 5, then 1 per card played (2)
   });
 
-  it('Pile Up shields per minion that has been discarded', () => {
+  it('Pile Up shields 2 per active minion', () => {
     const state = buildTestState({
-      player: { energy: 5, hand: [PILE_UP.id], minionsDiscarded: 3 },
+      player: { energy: 5, hand: [PILE_UP.id], minions: [minion(PILE_UP.id, 1), minion(PILE_UP.id, 2)] },
     });
-    expect(playFromHand(state, TEST_SELF, 0).state.player.shield).toBe(3);
+    expect(playFromHand(state, TEST_SELF, 0).state.player.shield).toBe(4);
   });
 
   it('Explosion doubles poison, empties the hand and the board', () => {

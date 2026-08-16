@@ -64,8 +64,10 @@ describe('battle setup', () => {
       seen.add(m.character);
       seen.add(m.enemyCharacter);
     }
-    // Every playable character turns up across a decent sample.
-    expect(seen.size).toBe(Object.keys(CHARACTERS).length);
+    // Every playable character turns up across a decent sample. (The Knight is
+    // authored but not playable — no art yet — so it is never matched up.)
+    const playable = Object.values(CHARACTERS).filter((c) => c.playable);
+    expect(seen.size).toBe(playable.length);
     // Same seed, same matchup — an odd demo round can be reproduced.
     expect(randomMatchup('repeat')).toEqual(randomMatchup('repeat'));
   });

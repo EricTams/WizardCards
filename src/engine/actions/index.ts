@@ -11,7 +11,7 @@
  * The ordered log of applied actions IS the game — replay it against
  * initialState(seed) and you reproduce any state exactly.
  */
-import type { CardId, CloudType, EntityId, ScaleMetric } from '@shared/index';
+import type { CardId, CloudType, EntityId, MarkKind, ScaleMetric } from '@shared/index';
 import type { PendingChoice, Phase } from '@engine/state/index';
 
 export interface StartTurn {
@@ -124,6 +124,25 @@ export interface DealDamage {
   readonly type: 'DealDamage';
   readonly target: EntityId;
   readonly amount: number;
+  /**
+   * Who is attacking. Optional because most damage doesn't care, but the Old
+   * Lady's **Power** does: the first attack a combatant makes on its turn deals
+   * `power` extra, which the reducer can only apply when it knows the attacker.
+   * Omitting it means "no attacker" — the hit lands unbuffed.
+   */
+  readonly self?: EntityId;
+}
+
+/**
+ * Lose HP directly — the Old Lady's cost ("Lose 1 HP, Gain 2 Power"). Distinct
+ * from DealDamage on purpose: self-inflicted loss ignores block and shield, and
+ * triggers that key off *being attacked* must not fire for it. Raises `HpLost`,
+ * which is what "when you lose HP on your turn, gain 1 Power" (Sharpen) reads.
+ */
+export interface LoseHp {
+  readonly type: 'LoseHp';
+  readonly target: EntityId;
+  readonly amount: number;
 }
 
 export interface GainBlock {
@@ -165,10 +184,24 @@ export interface GainPoison {
   readonly amount: number;
 }
 
+/** Raise (or, with a negative amount, lower) Power. Never falls below zero. */
 export interface GainPower {
   readonly type: 'GainPower';
   readonly target: EntityId;
   readonly amount: number;
+}
+
+/** "You gain N Power, all opponents gain N Power" (Challenge) — the second half. */
+export interface GainPowerAll {
+  readonly type: 'GainPowerAll';
+  readonly self: EntityId;
+  readonly amount: number;
+}
+
+/** Spend all Power to heal that much (Mend). Zeroes Power either way. */
+export interface ConvertPowerToHeal {
+  readonly type: 'ConvertPowerToHeal';
+  readonly target: EntityId;
 }
 
 export interface GainBravery {
@@ -236,7 +269,7 @@ export interface GainScaled {
   readonly type: 'GainScaled';
   readonly self: EntityId;
   readonly target: EntityId;
-  readonly resource: 'block' | 'shield' | 'energy' | 'power' | 'bravery' | 'poison';
+  readonly resource: 'block' | 'shield' | 'energy' | 'power' | 'bravery' | 'poison' | 'craft';
   readonly per: ScaleMetric;
   readonly multiplier: number;
 }
@@ -294,12 +327,16 @@ export interface MoveDiscardToDrawPile {
 }
 
 /**
- * Grant Molt to `count` cards in hand (Dungeon-ness, Skitter). The mark lands on
- * the *copies*, so it travels with them and is spent when they leave.
+ * Grant a per-copy card keyword to `count` cards in hand — Molt (Dungeon-ness,
+ * Skitter), Add (Retirement) or Fading (Search, Rough Draft). The mark lands on
+ * the *copies*, so it travels with them and is spent when they leave. Printed
+ * keywords are stamped onto copies too, so this correctly skips a card that
+ * already carries the keyword either way.
  */
-export interface AddMoltToHand {
-  readonly type: 'AddMoltToHand';
+export interface AddKeywordToHand {
+  readonly type: 'AddKeywordToHand';
   readonly owner: EntityId;
+  readonly keyword: 'molt' | 'add' | 'fading';
   readonly count: number;
 }
 
@@ -309,32 +346,99 @@ export interface AddMoltToDrawTop {
   readonly owner: EntityId;
 }
 
-/**
- * Grant Unplayable to `count` cards in hand (Trash Can). Like AddMoltToHand the
- * mark lands on the copies; unlike it, printed Unplayable is stamped onto copies
- * too (the reducer needs the flag to select Burn targets), so this correctly
- * skips cards that are already Unplayable either way.
- */
-export interface AddUnplayableToHand {
-  readonly type: 'AddUnplayableToHand';
-  readonly owner: EntityId;
-  readonly count: number;
+/** Raise the Writer's stored Craft. */
+export interface GainCraft {
+  readonly type: 'GainCraft';
+  readonly target: EntityId;
+  readonly amount: number;
 }
 
 /**
- * Burn — the Writer's mechanic: move Unplayable cards from `owner`'s hand to the
- * discard pile. Emits `CardsBurned`; the cards layer then plays each burned
- * card's effects for free (see `src/cards/match/burn.ts`). With `uids`, exactly
- * those chosen copies (a player's pick — non-Unplayable uids are ignored);
- * without, leftmost first. Omitting `count` burns every Unplayable card in hand
- * (Inspiration).
+ * Burn — the Writer's mechanic in its current form: spend Craft. Omitting
+ * `amount` burns everything (Dumpster Diver's "Burn All"). Records what was
+ * spent in `craftBurned` so the same card can deal damage equal to it, and
+ * raises `CraftBurned`, which "when you Burn, …" persistents (Ink, Wordsmith)
+ * key off.
  */
-export interface BurnCards {
-  readonly type: 'BurnCards';
+export interface BurnCraft {
+  readonly type: 'BurnCraft';
+  readonly target: EntityId;
+  readonly amount?: number;
+}
+
+/** Set Craft to an exact value. */
+export interface SetCraft {
+  readonly type: 'SetCraft';
+  readonly target: EntityId;
+  readonly amount: number;
+}
+
+/**
+ * Discard every Fading card left in `owner`'s hand — run at the end of their
+ * turn. A real discard (it counts, and sets off Molt), like the Fog penalty.
+ */
+export interface DiscardFading {
+  readonly type: 'DiscardFading';
   readonly owner: EntityId;
-  readonly count?: number;
-  /** The chosen copies. Overrides the leftmost-`count` default. */
-  readonly uids?: readonly number[];
+}
+
+/**
+ * Open or close the Old Lady's Blank window. While open, Add cards may be
+ * played for free; the count of Adds played into it resets whenever it opens.
+ */
+export interface SetAddWindow {
+  readonly type: 'SetAddWindow';
+  readonly target: EntityId;
+  readonly value: boolean;
+}
+
+/** Count one Add card played into the open window (Prunes scales off it). */
+export interface NoteCardAdded {
+  readonly type: 'NoteCardAdded';
+  readonly owner: EntityId;
+}
+
+/** Promise a resource for the start of the target's next turn (Trophy, Destroy). */
+export interface GrantNextTurn {
+  readonly type: 'GrantNextTurn';
+  readonly target: EntityId;
+  readonly resource: 'energy' | 'power' | 'bravery' | 'craft' | 'shield';
+  readonly amount: number;
+}
+
+/** Pay out (and clear) whatever was promised for this turn. */
+export interface ApplyNextTurn {
+  readonly type: 'ApplyNextTurn';
+  readonly target: EntityId;
+}
+
+/**
+ * Mark cards in `owner`'s hand with one of the Knight's four Markings. `scope`
+ * picks which cards: the leftmost `count` (`'hand'`), `count` chosen at random
+ * through the in-state RNG (`'random'`), or every card in hand (`'all'`).
+ * Marking a card that already carries that marking *raises* its value.
+ */
+export interface MarkCards {
+  readonly type: 'MarkCards';
+  readonly owner: EntityId;
+  readonly mark: MarkKind;
+  readonly value: number;
+  readonly count: number;
+  readonly scope: 'hand' | 'random' | 'all';
+}
+
+/** Mark `count` cards with a randomly-chosen Marking (Chisel). */
+export interface MarkCardsRandomKind {
+  readonly type: 'MarkCardsRandomKind';
+  readonly owner: EntityId;
+  readonly value: number;
+  readonly count: number;
+}
+
+/** Strip every Marking from every card in hand (Plate). */
+export interface ClearMarks {
+  readonly type: 'ClearMarks';
+  readonly owner: EntityId;
 }
 
 /**
@@ -353,28 +457,6 @@ export interface ClearPendingChoice {
   readonly type: 'ClearPendingChoice';
 }
 
-/**
- * Find — draw `count` cards exactly like DrawCards, then record how many of the
- * drawn copies were Unplayable in `unplayablesFound`, which the card's
- * "If you find an unplayable card, …" riders read (`IfFoundUnplayable`).
- */
-export interface FindDraw {
-  readonly type: 'FindDraw';
-  readonly owner: EntityId;
-  readonly count: number;
-}
-
-/**
- * Apply the inner action only if `owner`'s last Find drew at least one
- * Unplayable card. The inner action is plain data, so the whole thing stays
- * serializable and replayable.
- */
-export interface IfFoundUnplayable {
-  readonly type: 'IfFoundUnplayable';
-  readonly owner: EntityId;
-  readonly action: Action;
-}
-
 /** Set a combatant's Bravery to an exact value (Brain Storm's "set to zero"). */
 export interface SetBravery {
   readonly type: 'SetBravery';
@@ -382,7 +464,26 @@ export interface SetBravery {
   readonly amount: number;
 }
 
-/** Deal `amount` damage to every living opponent of `self` (Junk, Rusty Knife). */
+/** Double a stored X-value in place — Bravery (Gamble it All) or Poison (Explosion). */
+export interface DoubleResource {
+  readonly type: 'DoubleResource';
+  readonly target: EntityId;
+  readonly resource: 'bravery' | 'poison' | 'craft';
+}
+
+/**
+ * Convert all of the target's defense into Bravery (Cheater: "Gain Bravery
+ * equal to your Defense, set your Defense to zero") — or, with `keep: false`
+ * and no gain, simply strip it (Gamble it All's "lose all defense").
+ */
+export interface DefenseToBravery {
+  readonly type: 'DefenseToBravery';
+  readonly target: EntityId;
+  /** When false, the defense is lost without becoming Bravery. */
+  readonly gain: boolean;
+}
+
+/** Deal `amount` damage to every living opponent of `self` (Junk, the Eye relic). */
 export interface DealDamageToAll {
   readonly type: 'DealDamageToAll';
   readonly self: EntityId;
@@ -410,6 +511,17 @@ export interface NoteMinionReplayed {
   readonly owner: EntityId;
 }
 
+/**
+ * Announce that a card carrying `mark` was played, so "when you play a card
+ * Marked with Sharp, …" persistents can fire. Raised once per Marking on the
+ * copy, alongside the Marking's own effect (see `src/cards/match/marks.ts`).
+ */
+export interface NoteMarkedCardPlayed {
+  readonly type: 'NoteMarkedCardPlayed';
+  readonly owner: EntityId;
+  readonly mark: MarkKind;
+}
+
 /** Arm (or clear) "your clouds play twice next turn" — Solar Power. */
 export interface SetCloudsPlayTwice {
   readonly type: 'SetCloudsPlayTwice';
@@ -430,7 +542,7 @@ export interface IncreaseMaxClouds {
   readonly amount: number;
 }
 
-/** Raise the run-out-of-cards refill draw by `amount` (Brain in a Jar: 4 not 3). */
+/** Raise the run-out-of-cards refill draw by `amount` (Brain Jar: 4 not 3). */
 export interface IncreaseRefillDraw {
   readonly type: 'IncreaseRefillDraw';
   readonly target: EntityId;
@@ -453,12 +565,20 @@ export interface Venom {
   readonly type: 'Venom';
   readonly self: EntityId;
   readonly target: EntityId;
+  /**
+   * Consuming: "lose only half of your Poison when you use Venom or Drink".
+   * Set by the cards layer from the caster's persistents as the action is
+   * applied, so the reducer stays ignorant of what's in the play area.
+   */
+  readonly keepHalf?: boolean;
 }
 
 /** Drink: gain Block equal to the caster's Poison, then set Poison to 0. */
 export interface Drink {
   readonly type: 'Drink';
   readonly self: EntityId;
+  /** As Venom's — Consuming halves what the Drink spends. */
+  readonly keepHalf?: boolean;
 }
 
 /** Summon a minion that is a copy of `cardId`, owned by `owner`. */
@@ -491,6 +611,7 @@ export type Action =
   | AddPersistent
   | DrawCards
   | DealDamage
+  | LoseHp
   | DealDamageToRandomEnemy
   | DealDamageScaled
   | GainBlock
@@ -500,6 +621,8 @@ export type Action =
   | SetEnergy
   | GainPoison
   | GainPower
+  | GainPowerAll
+  | ConvertPowerToHeal
   | GainBravery
   | CreateClouds
   | RemoveClouds
@@ -522,18 +645,28 @@ export type Action =
   | DiscardAllMinions
   | NoteCardPlayed
   | NoteMinionReplayed
+  | NoteMarkedCardPlayed
   | ReturnCardToHand
   | ShuffleCardIntoDrawPile
   | ShuffleDrawPile
   | DiscardFromDrawPile
   | MoveDiscardToDrawPile
-  | AddMoltToHand
+  | AddKeywordToHand
   | AddMoltToDrawTop
-  | AddUnplayableToHand
-  | BurnCards
-  | FindDraw
-  | IfFoundUnplayable
+  | GainCraft
+  | BurnCraft
+  | SetCraft
+  | DiscardFading
+  | SetAddWindow
+  | NoteCardAdded
+  | GrantNextTurn
+  | ApplyNextTurn
+  | MarkCards
+  | MarkCardsRandomKind
+  | ClearMarks
   | SetBravery
+  | DoubleResource
+  | DefenseToBravery
   | DealDamageToAll
   | SetPendingChoice
   | ClearPendingChoice;

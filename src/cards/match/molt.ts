@@ -11,24 +11,12 @@
  * played from hand — nothing here touches energy.
  */
 import { opponentsOf, type Action, type GameEvent, type GameState } from '@engine/index';
-import type { CardId } from '@shared/index';
-import { parse } from '@cards/dsl/parser';
 import { compile } from '@cards/compile';
-import { getCard, type CardDef } from '@cards/registry';
+import { getCard } from '@cards/registry';
+import { hasMolt } from '@cards/match/keywords';
+
+export { hasMolt };
 import type { PlayContext } from '@cards/dsl/resolver';
-
-/** Memoized by card id — a card's text is static, so parse it at most once. */
-const moltCache = new Map<CardId, boolean>();
-
-/** Does this card carry Molt? (`Molt.` on its own line in the card's text.) */
-export function hasMolt(card: CardDef): boolean {
-  const cached = moltCache.get(card.id);
-  if (cached !== undefined) return cached;
-  const parsed = parse(card.text);
-  const molt = parsed.ok && parsed.value.modifiers.some((m) => m.modifier === 'molt');
-  moltCache.set(card.id, molt);
-  return molt;
-}
 
 /**
  * The free plays owed for one event: every Molt card in a genuine discard.

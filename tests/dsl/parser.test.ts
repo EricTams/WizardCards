@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parse } from '@cards/index';
+import { parse, compile } from '@cards/index';
 import type { EffectNode } from '@cards/index';
 
 /** Parse and assert success, returning the effect nodes. */
@@ -99,7 +99,13 @@ describe('scaling grammar', () => {
 
   it('still rejects scaling on a verb that has no scaled form', () => {
     expect(parse('Draw 1 card for each minion.').ok).toBe(false);
-    expect(parse('Heal 1 for each cloud.').ok).toBe(false);
+    expect(parse('Create 1 storm cloud for each minion.').ok).toBe(false);
+  });
+
+  it('scales heal only off power — Mend spends the buff as HP', () => {
+    expect(parse('Heal equal to the power lost.').ok).toBe(true);
+    // Parsed but not resolvable: heal has no per-cloud form.
+    expect(compile('Heal 1 for each cloud.').ok).toBe(false);
   });
 
   it('rejects "equal to your <unknown>"', () => {

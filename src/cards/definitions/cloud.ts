@@ -171,7 +171,7 @@ export const EMPTY_OUT: CardDef = {
   id: cardId('cloud-empty-out'),
   name: 'Empty Out',
   cost: 1,
-  text: 'Heal 1. Remove 3 clouds.',
+  text: 'Heal 1. Gain 1 energy. Remove 3 clouds.',
 };
 
 export const SPARK: CardDef = {

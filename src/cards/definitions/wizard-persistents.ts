@@ -15,11 +15,12 @@ export const ROT_AWAY: CardDef = {
   text: 'Whenever you deal unblocked damage, poison 1.',
 };
 
+/** Sip, don't drain: half your Poison survives every Venom and Drink. */
 export const CONSUMING: CardDef = {
   id: cardId('wizard-consuming'),
   name: 'Consuming',
   cost: 1,
-  text: 'When a minion is discarded, heal 1.',
+  text: 'You lose only half of your poison when you use venom or drink.',
 };
 
 export const PROTECT_THE_DRINKS: CardDef = {

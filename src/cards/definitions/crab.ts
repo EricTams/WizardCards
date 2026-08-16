@@ -173,12 +173,12 @@ export const LOW_TIDE: CardDef = {
   text: 'Molt. Heal 1. Draw 1 card.',
 };
 
-/** Molt plus recursion: discarding it deals damage AND hands it back to you. */
+/** Never leaves: it hits, then walks straight back into your hand. */
 export const SAND_KICK: CardDef = {
   id: cardId('crab-sand-kick'),
   name: 'Sand Kick',
   cost: 1,
-  text: 'Molt. Deal 2 damage. Return this card to your hand.',
+  text: 'Deal 3 damage. Return this card to your hand.',
 };
 
 export const TENTACLES: CardDef = {

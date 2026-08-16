@@ -107,19 +107,57 @@ export const GLOSSARY: readonly KeywordDef[] = [
     match: ['molt'],
   },
   {
-    term: 'Unplayable',
-    description: 'Cannot be played from your hand — but its effects still happen when it is Burned.',
-    match: ['unplayable'],
+    term: 'Craft',
+    description: "The Writer's stored value. Unlike energy it does not reset each turn — Burn cards spend it.",
+    // `burn` too: a Burn card never says "craft", but Craft is exactly what it
+    // costs, so the tooltip has to explain the resource alongside the cost.
+    match: ['craft', 'burn'],
   },
   {
     term: 'Burn',
-    description: 'Spend that many Unplayable cards from your hand (they go to the discard pile), triggering all effects on them. You need enough Unplayable cards in hand to play a Burn card.',
+    description: 'This card costs that much Craft instead of energy. Without enough Craft banked, you cannot play it.',
     match: ['burn'],
   },
   {
-    term: 'Find',
-    description: 'Draw that many cards, keeping everything drawn. If an Unplayable card came up, the "if you find…" bonus happens.',
-    match: ['find'],
+    term: 'Fading',
+    description: 'If this card is still in your hand at the end of your turn, it is discarded.',
+    match: ['fading'],
+  },
+  {
+    term: 'Blank',
+    description: 'This card has no effects. Playing it makes every Add card free to play, until you play a card that is neither Add nor Blank.',
+    match: ['blank'],
+  },
+  {
+    term: 'Add',
+    // Matched on the keyword *sentence* and the granting phrase, not a bare
+    // "add": the verb turns up all over the language ("Add molt to 2 cards",
+    // "1 additional card") and would tag half the game with the Old Lady's rule.
+    description: 'This card cannot be played normally — only after a Blank card has opened the window, and then for free.',
+    match: ['add.', 'put add on'],
+  },
+  // The four Markings are matched on "with <marking>", the only phrasing that
+  // actually marks a card — a bare "sharp" would tag Sharp Strike and Sharpen,
+  // and a bare "safe" would tag Safety Spell.
+  {
+    term: 'Sharp',
+    description: 'A Marking: when the marked card is played, deal that much damage to a random enemy. The marking is then lost.',
+    match: ['with sharp'],
+  },
+  {
+    term: 'Sturdy',
+    description: 'A Marking: when the marked card is played, draw that many cards. The marking is then lost.',
+    match: ['with sturdy'],
+  },
+  {
+    term: 'Flaming',
+    description: 'A Marking: when the marked card is played, gain that much energy. The marking is then lost.',
+    match: ['with flaming'],
+  },
+  {
+    term: 'Safe',
+    description: 'A Marking: when the marked card is played, heal that much. The marking is then lost.',
+    match: ['with safe'],
   },
 ];
 

@@ -9,9 +9,10 @@
  * the whole thing stays deterministic and replayable.
  */
 import { metricValue, type Action, type GameEvent, type GameState } from '@engine/index';
+import type { MarkKind } from '@shared/index';
 import { parse } from '@cards/dsl/parser';
 import { getCard } from '@cards/registry';
-import { hasMolt } from '@cards/match/molt';
+import { hasMolt } from '@cards/match/keywords';
 import type { EffectNode, TriggerCondition, TriggerNode } from '@cards/dsl/ast';
 import { CLOUD_CAP } from '@cards/match/content';
 
@@ -21,6 +22,12 @@ export interface PersistentBehavior {
   readonly onEndTurn?: (state: GameState) => Action[];
   readonly snowHealBonus?: number;
   readonly suppressFogDiscard?: boolean;
+  /** Explosives: Power stops decaying by 1 at the start of each turn. */
+  readonly suppressPowerDecay?: boolean;
+  /** Consuming: Venom and Drink spend only half the caster's Poison. */
+  readonly venomKeepsHalf?: boolean;
+  /** Wild Wind: a cloud fires its effect on the way out. */
+  readonly fireCloudsOnRemoval?: boolean;
   /** Protect the Drinks: each minion replays this many extra times per turn. */
   readonly minionReplayBonus?: number;
 }
@@ -32,10 +39,16 @@ export function compilePersistent(text: string): PersistentBehavior {
 
   let snowHealBonus = 0;
   let suppressFogDiscard = false;
+  let suppressPowerDecay = false;
+  let venomKeepsHalf = false;
+  let fireCloudsOnRemoval = false;
   let minionReplayBonus = 0;
   for (const mod of modifiers) {
     if (mod.modifier === 'snowHealBonus') snowHealBonus += mod.amount ?? 1;
     if (mod.modifier === 'suppressFogDiscard') suppressFogDiscard = true;
+    if (mod.modifier === 'suppressPowerDecay') suppressPowerDecay = true;
+    if (mod.modifier === 'venomKeepsHalf') venomKeepsHalf = true;
+    if (mod.modifier === 'fireCloudsOnRemoval') fireCloudsOnRemoval = true;
     if (mod.modifier === 'minionReplayBonus') minionReplayBonus += mod.amount ?? 1;
   }
 
@@ -55,6 +68,9 @@ export function compilePersistent(text: string): PersistentBehavior {
       : {}),
     ...(snowHealBonus !== 0 ? { snowHealBonus } : {}),
     ...(suppressFogDiscard ? { suppressFogDiscard: true } : {}),
+    ...(suppressPowerDecay ? { suppressPowerDecay: true } : {}),
+    ...(venomKeepsHalf ? { venomKeepsHalf: true } : {}),
+    ...(fireCloudsOnRemoval ? { fireCloudsOnRemoval: true } : {}),
     ...(minionReplayBonus !== 0 ? { minionReplayBonus } : {}),
   };
 }
@@ -107,13 +123,21 @@ function firingCount(trigger: TriggerNode, state: GameState, event: GameEvent): 
         const card = getCard(inst.cardId);
         return card ? hasMolt(card) : false;
       }).length;
-    // The Writer's events carry an owner, and a persistent is the player's —
-    // fire only for the player's own burns/draws, not an enemy Writer's.
-    case 'burnCard':
-      return event.type === 'CardsBurned' && event.owner === state.player.id ? event.instances.length : 0;
-    case 'drawUnplayableCard':
-      if (event.type !== 'CardsDrawn' || event.owner !== state.player.id) return 0;
-      return event.instances.filter((inst) => inst.unplayable === true).length;
+    // These events carry an owner, and a persistent is the player's — fire only
+    // for the player's own Burn / HP loss / Adds, not an opponent's.
+    case 'burn':
+      // Once per Burn, not once per Craft: "when you Burn, deal 1 damage".
+      return event.type === 'CraftBurned' && event.target === state.player.id && event.amount > 0 ? 1 : 0;
+    case 'loseHp':
+      return event.type === 'HpLost' && event.target === state.player.id && event.amount > 0 ? 1 : 0;
+    case 'addCard':
+      return event.type === 'CardAdded' && event.owner === state.player.id ? 1 : 0;
+    case 'playMarkedCard':
+      if (event.type !== 'MarkedCardPlayed' || event.owner !== state.player.id) return 0;
+      return !trigger.mark || trigger.mark === event.mark ? 1 : 0;
+    case 'playBlankCard':
+      // A Blank card being played is exactly what opens the Add window.
+      return event.type === 'AddWindowSet' && event.target === state.player.id && event.value ? 1 : 0;
     default:
       return 0;
   }
@@ -161,18 +185,47 @@ function resolveTriggerEffect(effect: EffectNode, state: GameState): Action[] {
       return [{ type: 'MoveDiscardToDrawPile', owner: self, count: amount }];
     case 'add':
       if (effect.noun === 'moltDrawTop') return [{ type: 'AddMoltToDrawTop', owner: self }];
-      if (effect.noun === 'unplayableHand') return [{ type: 'AddUnplayableToHand', owner: self, count: amount }];
-      return [{ type: 'AddMoltToHand', owner: self, count: amount }];
+      return [
+        { type: 'AddKeywordToHand', owner: self, keyword: effect.noun as 'molt' | 'add' | 'fading', count: amount },
+      ];
+    case 'craft':
+      if (effect.scale) {
+        return [{ type: 'GainScaled', self, target: self, resource: 'craft', per: effect.scale.per, multiplier: effect.amount ?? 1 }];
+      }
+      return [{ type: 'GainCraft', target: self, amount }];
     case 'burn':
-      return effect.noun === 'all' ? [{ type: 'BurnCards', owner: self }] : [{ type: 'BurnCards', owner: self, count: effect.amount ?? 1 }];
-    case 'find':
-      return [{ type: 'FindDraw', owner: self, count: amount }];
+      return effect.noun === 'all'
+        ? [{ type: 'BurnCraft', target: self }]
+        : [{ type: 'BurnCraft', target: self, amount: effect.amount ?? 1 }];
+    case 'lose':
+      if (effect.noun === 'hp') return [{ type: 'LoseHp', target: self, amount }];
+      if (effect.noun === 'power') return [{ type: 'GainPower', target: self, amount: -amount }];
+      if (effect.noun === 'all-power') return [{ type: 'ConvertPowerToHeal', target: self }];
+      if (effect.noun === 'all-defense') return [{ type: 'DefenseToBravery', target: self, gain: false }];
+      return [];
+    case 'mark':
+      if (effect.mark === 'random') {
+        return [{ type: 'MarkCardsRandomKind', owner: self, value: amount, count: effect.count ?? 1 }];
+      }
+      return [
+        {
+          type: 'MarkCards',
+          owner: self,
+          mark: effect.mark as MarkKind,
+          value: amount,
+          count: effect.count ?? 1,
+          scope: effect.scope ?? 'hand',
+        },
+      ];
     case 'set':
+      if (effect.noun === 'craft') return [{ type: 'SetCraft', target: self, amount }];
+      if (effect.noun === 'defense') return [{ type: 'DefenseToBravery', target: self, gain: false }];
       return [{ type: 'SetBravery', target: self, amount }];
     case 'retain':
       return [{ type: 'SetVenomRetains', target: self, value: true }];
     case 'remove':
       // Mirrors the on-play resolver — see the note on `discard` below.
+      if (effect.noun === 'markings') return [{ type: 'ClearMarks', owner: self }];
       if (effect.noun === 'allClouds') return [{ type: 'RemoveAllClouds', target: self }];
       if (effect.noun === 'randomClouds') return [{ type: 'RemoveRandomClouds', target: self, count: amount }];
       return [{ type: 'RemoveClouds', target: self, count: amount }];
@@ -210,6 +263,8 @@ function resolveGain(noun: string | undefined, self: GameState['player']['id'], 
       return [{ type: 'GainPower', target: self, amount }];
     case 'bravery':
       return [{ type: 'GainBravery', target: self, amount }];
+    case 'craft':
+      return [{ type: 'GainCraft', target: self, amount }];
     default:
       return [];
   }
@@ -246,6 +301,8 @@ function playerResource(state: GameState, resource: string): number {
       return p.power;
     case 'bravery':
       return p.bravery;
+    case 'craft':
+      return p.craft;
     case 'hp':
       return p.hp;
     case 'handSize':

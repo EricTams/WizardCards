@@ -24,6 +24,8 @@ export type ImpactKind =
   | 'draw'
   | 'power'
   | 'bravery'
+  | 'craft'
+  | 'mark'
   | 'minion';
 
 /** One visible consequence of a play: a projectile (optional) + a target number. */
@@ -51,10 +53,15 @@ const STYLE: Record<ImpactKind, { color: string; symbol: string }> = {
   draw: { color: '#ffffff', symbol: '🂠' },
   power: { color: '#ff7043', symbol: '💪' },
   bravery: { color: '#7fa8ff', symbol: '✒' },
+  craft: { color: '#d9a441', symbol: '✎' },
+  mark: { color: '#c0c8d4', symbol: '⚒' },
   minion: { color: '#7bd66a', symbol: '⚔' },
 };
 
 const CLOUD_GLYPH: Record<CloudType, string> = { lightning: '⚡', storm: '🌩', snow: '❄', fog: '🌫' };
+
+/** A signed amount, so a resource *loss* pops as "-1" rather than "+-1". */
+const signed = (n: number): string => (n < 0 ? `−${-n}` : `+${n}`);
 
 /** The visible impacts a play produces, in order, from its event batch. */
 export function impactsFromEvents(events: readonly GameEvent[], actorId: EntityId): Impact[] {
@@ -91,10 +98,24 @@ export function impactsFromEvents(events: readonly GameEvent[], actorId: EntityI
         if (e.amount > 0) out.push(mk('poison', sideOf(e.target), `+${e.amount}`, { fly: false }));
         break;
       case 'PowerGained':
-        if (e.amount) out.push(mk('power', sideOf(e.target), `+${e.amount}`, { fly: false }));
+        if (e.amount) out.push(mk('power', sideOf(e.target), signed(e.amount), { fly: false }));
         break;
       case 'BraveryGained':
-        if (e.amount) out.push(mk('bravery', sideOf(e.target), `+${e.amount}`, { fly: false }));
+        if (e.amount) out.push(mk('bravery', sideOf(e.target), signed(e.amount), { fly: false }));
+        break;
+      case 'CraftChanged':
+        if (e.amount) out.push(mk('craft', sideOf(e.target), signed(e.amount), { fly: false }));
+        break;
+      case 'CraftBurned':
+        if (e.amount) out.push(mk('craft', sideOf(e.target), `−${e.amount}`, { fly: false }));
+        break;
+      case 'HpLost':
+        // Self-inflicted, so it reads as a hit on the caster rather than a hit
+        // travelling anywhere — the Old Lady pays her own HP for Power.
+        if (e.amount) out.push(mk('damage', sideOf(e.target), `-${e.amount}`, { fly: false }));
+        break;
+      case 'CardsMarked':
+        if (e.cards.length && e.mark) out.push(mk('mark', 'self', `${e.mark} ${e.value}`, { fly: false }));
         break;
       case 'CloudsCreated':
         if (e.count)

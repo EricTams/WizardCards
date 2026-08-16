@@ -8,7 +8,7 @@
  *
  * text -> tokens -> AST -> [producers] --(at play time, given context)--> [Action]
  */
-import { type Diagnostic, type Result, ok, err, type CardId, type EntityId } from '@shared/index';
+import { type Diagnostic, type Result, ok, err, type CardId, type EntityId, type MarkKind } from '@shared/index';
 import type { Action } from '@engine/index';
 import type { CardScript, EffectNode } from '@cards/dsl/ast';
 import { CLOUD_CAP } from '@cards/match/content';
@@ -39,15 +39,8 @@ export function resolve(script: CardScript): Result<ActionProducer[], Diagnostic
 }
 
 function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionProducer | null {
-  // A Find rider ("If you find an unplayable card, …") resolves like the bare
-  // effect, then wraps it in the conditional action the reducer gates.
-  if (effect.when === 'foundUnplayable') {
-    const { when, ...bare } = effect;
-    void when; // dropped so the recursive resolve takes the bare-effect path
-    const inner = resolveEffect(bare, diagnostics);
-    if (!inner) return null;
-    return (ctx) => ({ type: 'IfFoundUnplayable', owner: ctx.self, action: inner(ctx) });
-  }
+  // "Next turn, gain 2 shields" — promise the resource instead of granting it.
+  if (effect.when === 'nextTurn') return resolveNextTurn(effect, diagnostics);
   const amount = effect.amount ?? 0;
   switch (effect.verb) {
     case 'deal':
@@ -59,7 +52,9 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       // "…to all opponents" / "…to a random opponent" override the chosen target.
       if (effect.target === 'allEnemies') return (ctx) => ({ type: 'DealDamageToAll', self: ctx.self, amount });
       if (effect.target === 'randomEnemy') return (ctx) => ({ type: 'DealDamageToRandomEnemy', self: ctx.self, amount });
-      return (ctx) => ({ type: 'DealDamage', target: ctx.target, amount });
+      // `self` rides along so the reducer can apply the Old Lady's Power to the
+      // first attack of the turn; every other damage path already carries it.
+      return (ctx) => ({ type: 'DealDamage', target: ctx.target, amount, self: ctx.self });
     case 'gain':
       if (effect.scale) {
         const per = effect.scale.per;
@@ -67,9 +62,64 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
         const resource = effect.noun as 'block' | 'shield' | 'energy' | 'power' | 'bravery';
         return (ctx) => ({ type: 'GainScaled', self: ctx.self, target: ctx.self, resource, per, multiplier });
       }
+      // "…to all opponents" on a resource gain: only Power says this today
+      // (Challenge hands the table a point of Power along with its own).
+      if (effect.target === 'allEnemies' && effect.noun === 'power') {
+        return (ctx) => ({ type: 'GainPowerAll', self: ctx.self, amount });
+      }
       return resolveGain(effect, diagnostics);
     case 'heal':
+      if (effect.scale) {
+        // "Heal equal to the power lost" — Mend spends Power for exactly that
+        // much HP, which is one action so the two halves can't disagree.
+        if (effect.scale.per === 'power') return (ctx) => ({ type: 'ConvertPowerToHeal', target: ctx.self });
+        diagnostics.push({
+          severity: 'error',
+          message: 'Only "heal equal to your power" scales heal today.',
+          start: effect.start,
+          end: effect.end,
+        });
+        return null;
+      }
       return (ctx) => ({ type: 'Heal', target: ctx.self, amount });
+    case 'lose':
+      switch (effect.noun) {
+        case 'hp':
+          return (ctx) => ({ type: 'LoseHp', target: ctx.self, amount });
+        case 'power':
+          return (ctx) => ({ type: 'GainPower', target: ctx.self, amount: -amount });
+        case 'all-power':
+          // Mend's other half. Zeroing Power without healing is the same action
+          // with the heal ignored, so this stays a single, total effect.
+          return (ctx) => ({ type: 'ConvertPowerToHeal', target: ctx.self });
+        case 'all-defense':
+          return (ctx) => ({ type: 'DefenseToBravery', target: ctx.self, gain: false });
+        default:
+          diagnostics.push({
+            severity: 'error',
+            message: `Don't know how to lose "${String(effect.noun)}".`,
+            start: effect.start,
+            end: effect.end,
+          });
+          return null;
+      }
+    case 'craft':
+      if (effect.scale) {
+        const per = effect.scale.per;
+        const multiplier = effect.amount ?? 1;
+        return (ctx) => ({ type: 'GainScaled', self: ctx.self, target: ctx.self, resource: 'craft', per, multiplier });
+      }
+      return (ctx) => ({ type: 'GainCraft', target: ctx.self, amount });
+    case 'mark':
+      if (effect.mark === 'random') {
+        return (ctx) => ({ type: 'MarkCardsRandomKind', owner: ctx.self, value: amount, count: effect.count ?? 1 });
+      }
+      {
+        const mark = effect.mark as MarkKind;
+        const count = effect.count ?? 1;
+        const scope = effect.scope ?? 'hand';
+        return (ctx) => ({ type: 'MarkCards', owner: ctx.self, mark, value: amount, count, scope });
+      }
     case 'poison':
       if (effect.scale) {
         const per = effect.scale.per;
@@ -101,11 +151,20 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
     case 'fill':
       return (ctx) => ({ type: 'FillCloudSlots', target: ctx.self, baseCap: CLOUD_CAP });
     case 'double':
-      return (ctx) => ({ type: 'SetCloudsPlayTwice', target: ctx.self, value: true });
+      if (effect.noun === 'clouds') return (ctx) => ({ type: 'SetCloudsPlayTwice', target: ctx.self, value: true });
+      return (ctx) => ({
+        type: 'DoubleResource',
+        target: ctx.self,
+        resource: effect.noun as 'bravery' | 'poison' | 'craft',
+      });
     case 'add':
       if (effect.noun === 'moltDrawTop') return (ctx) => ({ type: 'AddMoltToDrawTop', owner: ctx.self });
-      if (effect.noun === 'unplayableHand') return (ctx) => ({ type: 'AddUnplayableToHand', owner: ctx.self, count: amount });
-      return (ctx) => ({ type: 'AddMoltToHand', owner: ctx.self, count: amount });
+      return (ctx) => ({
+        type: 'AddKeywordToHand',
+        owner: ctx.self,
+        keyword: effect.noun as 'molt' | 'add' | 'fading',
+        count: amount,
+      });
     case 'return':
       return (ctx) => ({ type: 'ReturnCardToHand', owner: ctx.self, cardId: ctx.sourceCard });
     case 'shuffle':
@@ -118,6 +177,7 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       return (ctx) => ({ type: 'SetVenomRetains', target: ctx.self, value: true });
     case 'remove':
       // "Remove all clouds" (Dissolve) vs a counted "Remove 3 clouds".
+      if (effect.noun === 'markings') return (ctx) => ({ type: 'ClearMarks', owner: ctx.self });
       if (effect.noun === 'allClouds') return (ctx) => ({ type: 'RemoveAllClouds', target: ctx.self });
       if (effect.noun === 'randomClouds') {
         return (ctx) => ({ type: 'RemoveRandomClouds', target: ctx.self, count: amount });
@@ -133,11 +193,13 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       return (ctx) => ({ type: 'DiscardCards', owner: ctx.self, count: amount });
     case 'burn':
       return effect.noun === 'all'
-        ? (ctx) => ({ type: 'BurnCards', owner: ctx.self })
-        : (ctx) => ({ type: 'BurnCards', owner: ctx.self, count: effect.amount ?? 1 });
-    case 'find':
-      return (ctx) => ({ type: 'FindDraw', owner: ctx.self, count: amount });
+        ? (ctx) => ({ type: 'BurnCraft', target: ctx.self })
+        : (ctx) => ({ type: 'BurnCraft', target: ctx.self, amount: effect.amount ?? 1 });
     case 'set':
+      if (effect.noun === 'craft') return (ctx) => ({ type: 'SetCraft', target: ctx.self, amount });
+      // "Set your defense to zero" strips block and shield (Cheater, which has
+      // already converted it to Bravery by the time this runs).
+      if (effect.noun === 'defense') return (ctx) => ({ type: 'DefenseToBravery', target: ctx.self, gain: false });
       return (ctx) => ({ type: 'SetBravery', target: ctx.self, amount });
     case 'venom':
       return (ctx) => ({ type: 'Venom', self: ctx.self, target: ctx.target });
@@ -154,6 +216,34 @@ function resolveEffect(effect: EffectNode, diagnostics: Diagnostic[]): ActionPro
       });
       return null;
   }
+}
+
+/** Resources a "Next turn, …" clause can promise (Trophy, Well Rested, Destroy). */
+const NEXT_TURN_RESOURCES = new Set(['energy', 'power', 'bravery', 'craft', 'shield']);
+
+/**
+ * "Next turn, gain 2 shields" / "Next turn, craft 3" — a promise the
+ * start-of-turn cascade pays out (`ApplyNextTurn`), not an effect that happens
+ * now. Only resource gains can be deferred; anything else is a diagnostic.
+ */
+function resolveNextTurn(effect: EffectNode, diagnostics: Diagnostic[]): ActionProducer | null {
+  const resource = effect.verb === 'craft' ? 'craft' : effect.verb === 'gain' ? effect.noun : undefined;
+  const amount = effect.amount ?? 0;
+  if (!resource || !NEXT_TURN_RESOURCES.has(resource)) {
+    diagnostics.push({
+      severity: 'error',
+      message: '"Next turn, …" only supports gaining energy, power, bravery, craft or shields.',
+      start: effect.start,
+      end: effect.end,
+    });
+    return null;
+  }
+  return (ctx) => ({
+    type: 'GrantNextTurn',
+    target: ctx.self,
+    resource: resource as 'energy' | 'power' | 'bravery' | 'craft' | 'shield',
+    amount,
+  });
 }
 
 /** `gain` fans out to a different action per resource noun. */
