@@ -1,0 +1,20 @@
+{ "frames": [
+   {
+    "filename": "Old Lady - Persistent Icons #Revenge.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 32, "h": 30 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 30 },
+    "sourceSize": { "w": 32, "h": 30 },
+    "duration": 100
+   }
+ ],
+ "meta": {
+  "app": "https://www.aseprite.org/",
+  "version": "1.3.18.2-x64",
+  "image": "Old Lady - Persistent Icons-Revenge.png",
+  "format": "RGBA8888",
+  "size": { "w": 32, "h": 30 },
+  "scale": "1"
+ }
+}
