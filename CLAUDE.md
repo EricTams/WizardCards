@@ -4,7 +4,7 @@ Guidance for AI agents (and humans) working in this repo. Read this before makin
 
 ## What this is
 
-**Weather & Wanderers** — a TypeScript deckbuilding card battler ("WizardCards" is the repo/codebase name). Single-player first, **designed for** eventual multiplayer. A match is a **self-contained battle**: pick 1 of 5 characters (Cloud, Crab, Wizard, Old Lady, Writer), play a 20-card deck drawn from that character's ~40-card pool, choose 1 of 3 relics, and fight one opponent over ~10 turns — no meta-progression. Two signature features: cards authored in **English** (a small DSL compiles card text into game effects) and an in-game **Card Lab** that shows a card compiling in real time. Deploys as a static site to GitHub Pages.
+**Weather & Wanderers** — a TypeScript deckbuilding card battler ("WizardCards" is the repo/codebase name). Single-player first, **designed for** eventual multiplayer. A match is a **self-contained battle**: pick 1 of 6 characters (Cloud, Crab, Wizard, Old Lady, Writer, Knight), play a 20-card deck drawn from that character's ~40-card pool, choose 1 of 3 relics, and fight one opponent over ~10 turns — no meta-progression. Two signature features: cards authored in **English** (a small DSL compiles card text into game effects) and an in-game **Card Lab** that shows a card compiling in real time. Deploys as a static site to GitHub Pages.
 
 The game design (characters, cards, relics, setup rules) lives in `reference/design.md`. The docs in `docs/` describe the engine/architecture; today they document a Phase-0 walking skeleton whose gameplay does not yet match the full design — see `docs/roadmap.md`.
 

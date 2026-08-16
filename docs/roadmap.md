@@ -1,6 +1,6 @@
 # Roadmap
 
-Phased plan. **We are at the end of Phase 0.** The *game design* now exists — see `reference/design.md` (the "Weather & Wanderers" rulebook: 5 characters, their card lists, relics, setup rules). The phases below are the implementation path from today's walking skeleton toward that design; the exact scope of each is still being refined.
+Phased plan. **We are at the end of Phase 0.** The *game design* now exists — see `reference/design.md` (the "Weather & Wanderers" rulebook: 6 characters, their card lists, relics, setup rules). The phases below are the implementation path from today's walking skeleton toward that design; the exact scope of each is still being refined.
 
 ## Phase 0 — Foundation ✅ (this setup)
 
@@ -36,21 +36,32 @@ The one-battle loop the design describes (`reference/design.md` → "Game Setup 
 
 - ✅ **Per-combatant decks:** card piles (`drawPile`/`hand`/`discardPile`/`exhaustPile`) moved from `GameState` onto `Combatant`, so the enemy draws and plays cards through the *same* reducer as the player — the symmetric, multiplayer-ready shape.
 - ✅ **Battle driver** (`src/cards/match/battle.ts`): setup (deck build, relic combat-start, opening hand), mulligan, `playFromHand` (energy validate/spend → move to discard → resolve with triggers), `endPlayerTurn` (player end → **enemy's full card-playing turn** → next player turn), and win/lose via `SetPhase`.
-- ✅ **Energy economy & turn structure:** base 1 energy/turn (`SetEnergy` reset) + Lightning clouds; draw 1 per turn; reshuffle on deckout; an emptied hand refills 3 ("run out of cards", Brain in a Jar: 4) — see `docs/battle.md`.
+- ✅ **Energy economy & turn structure:** base 1 energy/turn (`SetEnergy` reset) + Lightning clouds; draw 1 per turn; reshuffle on deckout; an emptied hand refills 3 ("run out of cards", Brain Jar: 4) — see `docs/battle.md`.
 - ✅ **Block** (temporary) vs. **Shield** (persistent) — already two distinct resources on `Combatant`.
 - ✅ **Game view** (`src/ui/game/BattleScreen.tsx`): the full battle screen from the mockups, using the hand-drawn art for cards/heroes/clouds and HTML for every numeric value; character/relic select (`PlaySetup.tsx`) at `#/play`.
-- ✅ **The Cloud is fully authored** — all 40 designed cards, including its seven Persistents. The Wizard is at 37/40 (only minion-*protection* cards remain) and the Crab at 33/40. Piles hold card *copies* (`CardInstance`), so per-copy state like a granted Molt is possible.
-- ✅ **The Crab** (`src/cards/definitions/crab.ts`): 21 cards + Crab Trap and Exoskeleton, playable from character select on the `beach` theme, with the **Molt** keyword (`src/cards/match/molt.ts`), `discard N cards`, scaling off `cardsDiscardedThisTurn`, and the Seashell relic (opening hand of 6 instead of 5).
-- ✅ **The Writer** (`src/cards/definitions/writer.ts`): 25 cards + Ink and Paper Trail, playable from character select on the `study` theme, with the whole keyword trio — **Unplayable** (stamped onto copies; `canPlayAt` refuses them), **Burn** as a cost that plays the burned cards' effects for free (`src/cards/match/burn.ts`), **Find** with its conditional rider (`IfFoundUnplayable`) — plus the once-per-turn **Bravery** block/shield boost and the Gel Pen relic. Still to author: Uncreative, Pull From the Hat, Shredder, Writing Prompt, Cheater, Well Rested, and 7 persistents (see `writer.ts` / `writer-persistents.ts` headers).
-- ✅ **Card choices** everywhere the design implies them: hand discards, burns, cloud removal ("your choice"), minion discards, and discard-pile retrieval (Dry Out) all pause for the player's pick (`PendingChoice` + `resolvePendingChoice`, see `docs/battle.md` §4b); the AI keeps the deterministic defaults.
-- ⏳ Still open: the rest of the ~40-card pools (what remains needs deck manipulation, choosing a card from hand, replaying a card, peeking at piles, or next-turn effects) + Persistent cards in decks, a richer/varied enemy model (enemy persistents & clouds), multi-target/AoE selection, the Old Lady, and formal move-intent validation. The **game log** (below) is also still to come in the game view.
+- ✅ **All six characters are authored**, each with its signature mechanic working end to end. Piles hold card *copies* (`CardInstance`), so per-copy state — a granted Molt, an Add stamp, a Marking — is possible.
+
+  | Character | Cards | Persistents | Mechanic |
+  |-|-|-|-|
+  | Cloud | 33 | 7 | Clouds (`match/index.ts` cascade) |
+  | Wizard | 33 | 4 | Poison / Venom / Drink / Minions |
+  | Crab | 27 | 6 | Molt (`match/molt.ts`) |
+  | Writer | 25 | 3 | Craft / Burn / Fading |
+  | Old Lady | 30 | 5 | Blank / Add / Power |
+  | Knight | 19 | 3 | Markings (`match/marks.ts`) — **no art yet**, so not offered |
+
+- ✅ **Card choices** everywhere the design implies them: hand discards, cloud removal ("your choice"), minion discards, and discard-pile retrieval (Dry Out) all pause for the player's pick (`PendingChoice` + `resolvePendingChoice`, see `docs/battle.md` §4b); the AI keeps the deterministic defaults.
+- ✅ **The 2026-08-15 content drop** is in: the level art (backdrop + platform) for all five drawn characters, the Crab's hero animations, the Old Lady's 40 card faces, Persistent status icons for all five, and 25 relic icons — all wired through `src/ui/game/art.ts`. The rulebook in `reference/design.md` is the drop's revision, which reworked the Writer onto Craft/Burn/Fading, finalized the Old Lady, renamed most of the relics, and added the Knight.
+- ⏳ Still open: the rest of the 40-card pools (what remains needs peeking at piles, replaying a card, creating cards from nothing, or riders that arm a *future* play) + Persistent cards in decks, **relic triggers** (only combat-start relics work), a richer/varied enemy model (enemy persistents & clouds), multi-target/AoE selection, the design's **10-card hand cap**, and formal move-intent validation.
 
 Several design ambiguities that gated this phase are now decided (energy economy, enemy model = same card system, no turn limit) — see `vision.md`.
 
 ## Phase 3 — Content & balance
 
-- Author the 5 character card sets from `reference/design.md` in English — Attacks / Skills / Persistents — each with edge-case fixtures, plus the relics.
-- The per-character **status/keyword systems** these cards need: Clouds (Lightning/Snow/Fog/Storm), Poison/Venom/Drink & Minions, Molt/discard, Blank/Add & Power, Unplayable/Burn/Find & Bravery, and Persistent (ongoing) cards.
+- Finish the 6 character card sets from `reference/design.md` in English — Attacks / Skills / Persistents — each with edge-case fixtures, plus the relics. Every character file's header lists exactly what it is still missing and why.
+- ✅ The per-character **status/keyword systems** these cards need: Clouds (Lightning/Snow/Fog/Storm), Poison/Venom/Drink & Minions, Molt/discard, Blank/Add & Power, Craft/Burn/Fading & Bravery, Markings, and Persistent (ongoing) cards.
+- **Knight art** — hero animations, card faces and relic icons; until then the character is authored but hidden.
+- **Relic triggers**, so the ongoing relics (Urn, Toy Boat, Thorn, Hand, Quilt, …) can exist at all.
 - Coverage thresholds enabled.
 - Balancing tools (the Card Lab as a design aid).
 

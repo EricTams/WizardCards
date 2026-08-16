@@ -49,22 +49,37 @@ Persistents react from the play area and minions replay from the board, but the 
 
 The distinction is load-bearing rather than cosmetic. Playing a card moves it to the discard pile through the very same event, so firing on `play` would play every Molt card **twice**; and the mulligan is a setup step, where a Molt card would otherwise resolve before turn 1. The same rule governs the `cardsDiscardedThisTurn` counter, which only `discard` increments.
 
-### Burn — the Writer's Molt-shaped cousin
+### Markings — the copy carries the trigger
 
-**Unplayable** cards react the same way Molt cards do — from the hand, as they leave it — but on their own event. `BurnCards` moves the copies to the discard pile and raises **`CardsBurned`** (not `CardsDiscarded`: a burn must not set off Molt or bump the per-turn discard count), and `burnTriggers` (`src/cards/match/burn.ts`) is the third source `reactiveTriggers` folds into the cascade: every burned card plays its full effects for free — the design's "trigger all effects on them". Persistents key off the same event ("when you burn an unplayable card" — Ink), counted per burned copy.
+The Knight's **Markings** are the other per-copy trigger, and the simplest: they aren't compiled from text at all. A marked copy carries `{ sharp: 2 }`, and `markEffects` (`src/cards/match/marks.ts`) turns that into actions as the card is played, *before* the card's own text. Each kind maps to one fixed effect scaled by its value — Sharp → damage a random enemy, Sturdy → draw, Flaming → energy, Safe → heal. The copy is in the discard pile by then, so its markings are spent with it; nothing has to erase them.
 
-Selection happens **in the reducer** — leftmost Unplayable copies first, all of them when the action carries no count — which is why `CardInstance.unplayable` covers printed and granted Unplayable alike (see `docs/card-dsl.md` on stamping). Burn is also a **cost**: `canPlayAt` refuses a Burn card unless the hand holds enough Unplayable cards, and the AI's `validPlays` uses the same gate so it can never pick a play the engine then rejects.
+Each marking also raises a `MarkedCardPlayed` bookkeeping event (via `NoteMarkedCardPlayed`), which is what "when you play a card Marked with Sharp" persistents (Engrave, Etching, Woodworking) key off — the marking's effect alone would be invisible to them.
+
+### Burn — a cost, not a cascade
+
+The Writer's **Burn** used to work like Molt: it spent Unplayable cards from your hand and played their effects. Since the 2026-08-15 content drop it is simply a **cost in Craft** — `BurnCraft` moves the number out of `Combatant.craft` and raises `CraftBurned`, which "when you Burn, …" persistents (Ink, Wordsmith) fire on, once per Burn rather than once per point. `canPlayAt` refuses a Burn card unless that much Craft is banked, and the AI's `validPlays` uses the same gate so it can never pick a play the engine then rejects. A Burn card costs **no energy** (`energyCostAt`).
+
+### Fading and the Add window — hand state, resolved at the edges
+
+Two more per-copy keywords act outside the event cascade, at fixed points in the turn:
+
+- **Fading** (the Writer): the end-of-turn cascade runs `DiscardFading` before the Fog penalty, discarding every Fading copy still in hand. It is a *real* discard, so it counts and sets off Molt.
+- **Blank / Add** (the Old Lady): `playFromHand` reads the played copy's keywords and opens, keeps, or shuts the **Add window** (`Combatant.addWindow`) around it — a Blank opens it, an Add keeps it open and bumps `cardsAdded`, anything else shuts it. `canPlayAt` refuses an Add card outside a window, and `energyCostAt` makes it free inside one. `ClearTurnCounters` closes the window each turn, so it can never survive into the next.
+
+**Power decays in the cascade, not the reducer.** "Power decreases by 1 at the start of your turn" is a game rule, so `runTurnCascade` applies it — right after the energy reset and before any of this turn's Power-granting cards land. Explosives suppresses it via the `suppressPowerDecay` modifier. Turn 1 runs *no* upkeep (no energy reset, no decay), so a combat-start relic survives into the turn it was granted for.
+
+**One action can be amended by the play area.** Consuming ("lose only half of your Poison when you use Venom or Drink") changes how a single atomic action behaves, and the reducer must not know what persistents exist. `applyWithTriggers` therefore runs an `amend` step: it stamps `keepHalf` onto a Venom/Drink before handing it to the reducer. Doing it there rather than in the resolver covers every path a Venom can arrive by — a card play, a Molt free play, a minion replay.
 
 **Minion replay is announced.** Replaying a minion is orchestrated by the cards layer, not by an action, so it would otherwise be invisible to triggers. `runTurnCascade` runs a `NoteMinionReplayed` bookkeeping action before each pass, raising a `MinionReplayed` event that "when a minion is replayed" (Juggle) keys off — including the extra passes Protect the Drinks adds. `NoteCardPlayed` does the same job for the per-turn cards-played count.
 
 ### Phase — start / end of turn
-`startTurn` sequences: advance the turn → clear temporary block → fire each **cloud** (Lightning→energy, Snow→heal, Storm→damage a random enemy, Fog→draw) → run start-of-turn persistents (Summer) → **replay each minion** (its compiled text minus re-summoning itself) → draw. `endTurn` makes Fog clouds force a discard (unless Fall) and ends the turn. Each step resolves its own reactive cascade before the next.
+`startTurn` sequences: advance the turn → clear temporary block and the per-turn counters → reset energy to base → **decay Power** by 1 → pay out anything a `Next turn, …` card promised (`ApplyNextTurn`) → fire each **cloud** (Lightning→energy, Snow→heal, Storm→damage a random enemy, Fog→draw) → run start-of-turn persistents (Summer, Fletching) → **replay each minion** (its compiled text minus re-summoning itself) → draw. `endTurn` runs end-of-turn persistents, discards **Fading** cards, makes Fog clouds force a discard (unless Fall), and ends the turn. Each step resolves its own reactive cascade before the next.
 
 ## Persistents — authored in English
 
 Persistents are **ordinary cards, authored in English** (`src/cards/definitions/cloud-persistents.ts`, `wizard-persistents.ts`) and registered in `ALL_CARDS` like everything else. `compilePersistent(text)` (`src/cards/match/compile-persistent.ts`) parses the trigger grammar (`docs/card-dsl.md`) into the hooks the orchestrator consults: `onEvent` (reactive), `onStartTurn`/`onEndTurn` (phase), and the modifiers `snowHealBonus` (Winter) / `suppressFogDiscard` (Fall). Compilation is memoized by card id since text is static.
 
-Modeled today: **Winter, Fall, Spring, Summer, Static** (Cloud) and **Rot Away, Consuming** (Wizard). Because a persistent's statements are all triggers/modifiers, `compile()` yields **zero on-play actions** — playing/registering one does nothing until it's in the play area. `PERSISTENT_CARDS` is the subset of the registry that behaves this way.
+Modeled today: **Winter, Fall, Spring, Summer, Static, Wild Wind, Windmill** (Cloud); **Rot Away, Consuming, Protect the Drinks, Juggle** (Wizard); **Crab Trap, Exoskeleton, Decapod, Eyestalks, Prawn, Decorator** (Crab); **Ink, Wordsmith, Whiteboard** (Writer); **Sharpen, Crossword, Explosives, Fletching, Revenge** (Old Lady); and **Engrave, Etching, Woodworking** (Knight). Because a persistent's statements are all triggers/modifiers, `compile()` yields **zero on-play actions** — playing/registering one does nothing until it's in the play area. `PERSISTENT_CARDS` is the subset of the registry that behaves this way.
 
 To add a persistent, write its English text as a card and it just works — no code, provided the trigger grammar covers its wording. Behavior that the grammar can't yet express (e.g. Wild Wind's cloud churn, "replayed N extra times") is the remaining gap, not the persistents themselves.
 
@@ -78,4 +93,4 @@ The **Card Lab Play test** routes card play and the Start/End-turn buttons throu
 
 ## Not yet built
 
-*"replayed N extra times"* persistents; end-of-turn cloud churn (Wild Wind, Windmill); more trigger events (on-draw, on-block, on-gain) and richer conditions. (Minion *damage-soak* — a minion takes a hit in your place — and the cloud cap of 3 are now implemented; see `docs/battle.md`.)
+Trigger events for "when you play a Fading/Burn card", "when you draw an additional card", and "when you create a card" — the remaining gap behind Shake Spear, Direct, Paper Trail, Scribe, Cannonball and Time Heals all Wounds. Riders that arm a *future* play ("your next card is played twice", "when you play a card this turn, …") need a new kind of pending state and are the other big hole. **Relic triggers** — relics can only fire at combat start today, so the design's ongoing relics (Urn, Toy Boat, Thorn, Hand, Quilt, …) are unmodelled.

@@ -34,17 +34,27 @@ double  "your clouds next turn"
 remove  <number> ["random"] "cloud" | remove "all clouds"
 increase "max clouds by" <number>
 discard <number> ("minion" | "card") | discard ("your hand" | "all minions")
+lose    <number> ("HP" | "power") | lose ("all power" | "all defense")
 retain  "your poison"
 return  "this card to your hand"
 shuffle ("this card into your draw pile" | "your draw pile")
 move    <number> "card from your discard pile to your draw pile"
-add     "molt to" <number> "cards in your hand" | add "molt to the top card of your draw pile"
-add     "unplayable to" <number> "cards in your hand"
-burn    [<number>] | burn "all unplayable cards in your hand"
-find    <number> ["cards"]
-set     "your bravery to" ("zero" | <number>)
+add|put KEYWORD ["to"|"on"] <number> "cards in your hand"   KEYWORD ∈ molt | add | fading
+add     "molt to the top card of your draw pile"
+craft   [<number>]
+burn    [<number>] | burn "all"
+mark    [<number> "cards"] "with" MARK <number>    MARK ∈ sharp | sturdy | flaming | safe
+                                                  | "a random marking"
+        — "all cards" marks the whole hand; "a random card" picks through the RNG
+remove  "all markings"
+set     ("your bravery" | "your craft" | "your defense") "to" ("zero" | <number>)
+double  ("your bravery" | "your poison" | "your craft")
 "venom" | "drink" | "minion"       bare keyword effects (no number/noun)
 ```
+
+A sentence may also open with **`Next turn,`** — its effects are *promised* rather
+than applied (`Next turn, gain 2 shields, craft 3.`). Only resource gains can be
+deferred; anything else is a diagnostic.
 
 | English                    | AST (`EffectNode`)                                  | Produces                                   |
 |----------------------------|-----------------------------------------------------|--------------------------------------------|
@@ -72,13 +82,27 @@ set     "your bravery to" ("zero" | <number>)
 | `Shuffle your draw pile.`  | `{ verb:'shuffle', noun:'drawPile' }`                | `ShuffleDrawPile(self)`                    |
 | `Discard 3 cards from your draw pile.` | `{ verb:'discard', amount:3, noun:'drawPile' }` | `DiscardFromDrawPile(self, 3)`     |
 | `Move 1 card from your discard pile to your draw pile.` | `{ verb:'move', amount:1, noun:'discardToDraw' }` | `MoveDiscardToDrawPile(self, 1)` |
-| `Add molt to 2 cards in your hand.` | `{ verb:'add', amount:2, noun:'moltHand' }`   | `AddMoltToHand(self, 2)`                   |
+| `Add molt to 2 cards in your hand.` | `{ verb:'add', amount:2, noun:'molt' }`     | `AddKeywordToHand(self,'molt',2)`          |
+| `Put add on 1 card in your hand.` | `{ verb:'add', amount:1, noun:'add' }`        | `AddKeywordToHand(self,'add',1)`           |
+| `Add fading to 1 card in your hand.` | `{ verb:'add', amount:1, noun:'fading' }`  | `AddKeywordToHand(self,'fading',1)`        |
 | `Add molt to the top card of your draw pile.` | `{ verb:'add', noun:'moltDrawTop' }` | `AddMoltToDrawTop(self)`             |
-| `Add unplayable to 2 cards in your hand.` | `{ verb:'add', amount:2, noun:'unplayableHand' }` | `AddUnplayableToHand(self, 2)`  |
-| `Burn 2.`                  | `{ verb:'burn', amount:2 }`                          | `BurnCards(self, 2)`                       |
-| `Burn all unplayable cards in your hand.` | `{ verb:'burn', noun:'all' }`         | `BurnCards(self)` (no count = all)         |
-| `Find 2 cards.`            | `{ verb:'find', amount:2, noun:'cards' }`            | `FindDraw(self, 2)`                        |
+| `Craft 3.`                 | `{ verb:'craft', amount:3 }`                         | `GainCraft(self, 3)`                       |
+| `Burn 2.`                  | `{ verb:'burn', amount:2 }`                          | `BurnCraft(self, 2)`                       |
+| `Burn all.`                | `{ verb:'burn', noun:'all' }`                        | `BurnCraft(self)` (no amount = all)        |
+| `Lose 2 HP.`               | `{ verb:'lose', amount:2, noun:'hp' }`               | `LoseHp(self, 2)`                          |
+| `Lose 1 power.`            | `{ verb:'lose', amount:1, noun:'power' }`            | `GainPower(self, -1)`                      |
+| `Lose all power, heal equal to the power lost.` | `{ verb:'lose', noun:'all-power' }` | `ConvertPowerToHeal(self)`            |
+| `Lose all defense.`        | `{ verb:'lose', noun:'all-defense' }`                | `DefenseToBravery(self, gain:false)`       |
+| `Mark 2 cards in your hand with sharp 1.` | `{ verb:'mark', mark:'sharp', count:2, amount:1, scope:'hand' }` | `MarkCards(self,'sharp',1,2,'hand')` |
+| `Mark all cards in your hand with sharp 1.` | `{ verb:'mark', scope:'all' }`     | `MarkCards(…, scope:'all')`                |
+| `Mark 1 card in your hand with a random marking 3.` | `{ verb:'mark', mark:'random' }` | `MarkCardsRandomKind(self, 3, 1)`     |
+| `Remove all markings.`     | `{ verb:'remove', noun:'markings' }`                 | `ClearMarks(self)`                         |
 | `Set your bravery to zero.`| `{ verb:'set', amount:0, noun:'bravery' }`           | `SetBravery(self, 0)`                      |
+| `Set your craft to zero.`  | `{ verb:'set', amount:0, noun:'craft' }`             | `SetCraft(self, 0)`                        |
+| `Set your defense to zero.`| `{ verb:'set', noun:'defense' }`                     | `DefenseToBravery(self, gain:false)`       |
+| `Double your bravery.`     | `{ verb:'double', noun:'bravery' }`                  | `DoubleResource(self, 'bravery')`          |
+| `Gain 1 power to all opponents.` | `{ verb:'gain', amount:1, noun:'power', target:'allEnemies' }` | `GainPowerAll(self, 1)`      |
+| `Next turn, gain 2 shields.` | `{ verb:'gain', noun:'shield', when:'nextTurn' }`  | `GrantNextTurn(self,'shield',2)`           |
 | `Deal 1 damage to all opponents.` | `{ verb:'deal', amount:1, target:'allEnemies' }` | `DealDamageToAll(self, 1)`              |
 | `Venom.`                   | `{ verb:'venom' }`                                  | `Venom(self, target)`                      |
 | `Drink.`                   | `{ verb:'drink' }`                                  | `Drink(self)`                              |
@@ -107,8 +131,11 @@ Parsing has two levels: text splits into **sentences** on `.`/`;`, and each sent
 | `When a minion is replayed, …`                      | `{ event: 'minionReplayed' }`                             |
 | `When you discard a card, …`                        | `{ event: 'discardCard' }`                                |
 | `When you discard a card with molt, …`              | `{ event: 'discardMoltCard' }`                            |
-| `When you burn an unplayable card, …`               | `{ event: 'burnCard' }`                                   |
-| `When you draw an unplayable card, …`               | `{ event: 'drawUnplayableCard' }`                         |
+| `When you burn, …`                                  | `{ event: 'burn' }` (once per Burn, not per Craft)        |
+| `When you lose HP, …`                               | `{ event: 'loseHp' }`                                     |
+| `When you add a card, …`                            | `{ event: 'addCard' }`                                    |
+| `When you play a blank card, …`                     | `{ event: 'playBlankCard' }`                              |
+| `When you play a card marked with sharp, …`         | `{ event: 'playMarkedCard', mark: 'sharp' }`              |
 | `When you shuffle your deck, …`                     | `{ event: 'shuffleDeck' }`                                |
 | `At the start of your turn, …`                      | `{ event: 'startTurn' }`                                  |
 | `At the end of your turn, …`                        | `{ event: 'endTurn' }`                                    |
@@ -119,9 +146,11 @@ The when-phrase is matched by keywords, so wording is forgiving. A reactive trig
 
 **Random clouds.** A `random` cloud type carries no `cloudType` — the reducer draws one through `state.rng`, so the same seed reproduces the same weather and the action log stays the source of truth. `CreateRandomClouds` emits one `CloudsCreated` per cloud rather than one batched event, since the types differ and "whenever you create a cloud" fires per cloud. `FillCloudSlots` is handed `CLOUD_CAP` as its `baseCap` because the limit is a cards-layer rule; the engine adds the combatant's own bonus.
 
-**Cards are copies, not ids.** Piles hold `CardInstance` — `{ uid, cardId, molt?, unplayable? }` — because a *copy* can carry state its card does not. Granting Molt (Dungeon-ness, Skitter, Decorator) marks one copy, so a second copy of the same card in the same hand stays unmarked, and the mark rides along as the copy moves between piles. `uid` comes from `GameState.idSeq`, keeping identity deterministic across a replay.
+**Cards are copies, not ids.** Piles hold `CardInstance` — `{ uid, cardId, molt?, blank?, add?, fading?, marks? }` — because a *copy* can carry state its card does not. Granting Molt (Dungeon-ness, Skitter, Decorator) marks one copy, so a second copy of the same card in the same hand stays unmarked, and the mark rides along as the copy moves between piles. `uid` comes from `GameState.idSeq`, keeping identity deterministic across a replay.
 
-The two flags differ in one deliberate way: `molt` covers only a *granted* Molt (printed Molt stays in the card text), but `unplayable` covers **printed and granted alike** — the reducer itself selects Burn targets and counts Find hits, and it can't read card text, so `stampPrintedKeywords` (`src/cards/match/burn.ts`) stamps printed Unplayable onto every copy the cards layer creates (battle setup, test fixtures). A copy minted from an existing instance (Sand Kick's return, reshuffles) keeps its marks automatically.
+`molt` is the odd one out: it covers only a *granted* Molt, since printed Molt stays in the card text where `moltTriggers` reads it. The rest — `blank`, `add`, `fading` — cover **printed and granted alike**, because the reducer itself acts on them (it discards Fading cards at end of turn, counts Blanks in hand, and refuses to play an Add card outside a window) and it can't read card text. `stampPrintedKeywords` (`src/cards/match/keywords.ts`) stamps them onto every copy the cards layer creates (battle setup, test fixtures). A copy minted from an existing instance (Sand Kick's return, reshuffles) keeps its marks automatically.
+
+`marks` is the Knight's per-copy state with a *value*: `{ sharp: 2 }`. Marking an already-marked card raises the value rather than replacing it. Markings fire as the card is played (before its own text) and go to the discard with the copy — see `src/cards/match/marks.ts`.
 
 Two conveniences keep this from leaking everywhere: **events still carry plain `CardId[]`** (with an extra `instances` field on `CardsDiscarded`, since a granted Molt is invisible in an id), and **test fixtures still name piles by card id** — `buildTestState` wraps them, and `pileOf(...)` does the same for tests that build a combatant directly.
 
@@ -141,11 +170,24 @@ Granting is deterministic rather than chosen: with no UI for "choose a card", it
 
 **Targeting** — a trailing `to all opponents` / `to a random opponent` on a `deal` effect sets `target: 'allEnemies' | 'randomEnemy'`. Inside a trigger, a bare `deal` defaults to a random opponent; other effects (heal/gain/poison) apply to the persistent's owner. On-play, a bare `deal` hits `ctx.target`, while the targeting words override it — `allEnemies` → `DealDamageToAll`, `randomEnemy` → `DealDamageToRandomEnemy` (Junk's "Deal 1 damage to all opponents").
 
-**Modifiers** — the two stat-changing persistents: `Snow clouds heal 2 instead of 1.` → `{ modifier: 'snowHealBonus', amount: 1 }`, and `Fog clouds no longer force a discard.` → `{ modifier: 'suppressFogDiscard' }`.
+**Modifiers** — persistents that bend a rule rather than firing an effect:
+
+| English                                                       | Modifier                        |
+|---------------------------------------------------------------|---------------------------------|
+| `Snow clouds heal 2 instead of 1.`                            | `snowHealBonus: 1`              |
+| `Fog clouds no longer force a discard.`                       | `suppressFogDiscard`            |
+| `Minions are replayed 1 additional time.`                     | `minionReplayBonus: 1`          |
+| `Power no longer decreases at the start of your turn.`        | `suppressPowerDecay`            |
+| `You lose only half of your poison when you use venom or drink.` | `venomKeepsHalf`             |
+| `Clouds play their effect when they are removed.`             | `fireCloudsOnRemoval`           |
 
 **`Molt.`** — the Crab's keyword, written as a sentence of its own (`Molt. Deal 4 damage.`) so it can't be mistaken for a verb. It parses to `{ modifier: 'molt' }` and yields **no on-play action**: it marks the card as one that plays for free when *discarded*. The card's other statements are its effects as normal, whether played from hand or fired by Molt. Resolution lives in `src/cards/match/molt.ts` — see `docs/triggers.md`.
 
-**`Unplayable.` / Burn / Find** — the Writer's keyword trio, mirroring Molt's shape. `Unplayable.` parses to `{ modifier: 'unplayable' }`: the card can't be played from hand (`canPlayAt` refuses it), but **Burn** spends it — `BurnCards` moves the copies to the discard pile and the `CardsBurned` event plays each one's effects for free (`src/cards/match/burn.ts`). Burn is a **cost**: `burnCostOf(card)` sums the card's counted burns, and `canPlayAt` requires that many Unplayable cards in hand. **Find** (`Find 2 cards.`) draws like `draw` but records how many Unplayable copies came up in `Combatant.unplayablesFound`; a following sentence `If you find an unplayable card, <effects…>` tags its effects `when: 'foundUnplayable'`, which the resolver wraps in `IfFoundUnplayable` — a conditional action the reducer applies only when the last Find hit. `NoteCardPlayed` zeroes the counter so a rider can never read a stale Find from an earlier card. The design's em-dash cards map onto these sentences: "Find — Draw 2 — Deal 2 Damage" is authored `Find 2 cards. If you find an unplayable card, deal 2 damage.`
+**`Fading.` / Craft / Burn** — the Writer's trio, all written in Molt's shape. `Craft N` banks the resource on `Combatant.craft`, which — unlike energy — is *not* reset each turn. **Burn** spends it: `Burn 3.` is a `BurnCraft` action, and it is a **cost**, so `burnCostOf(card)` sums the card's counted burns and `canPlayAt` requires that much Craft banked. A Burn card also costs **no energy** (`energyCostAt` returns 0), matching the design's "this card does not cost energy to play". `Burn all.` spends the lot and records it in `craftBurned`, which the same card can then read (`Deal damage equal to the craft burned.` — Dumpster Diver); `NoteCardPlayed` zeroes it, so a later card can never read an earlier card's burn. `Fading.` parses to `{ modifier: 'fading' }` and stamps the copy: the end-of-turn cascade discards every Fading card still in hand (a *real* discard, so Molt still fires).
+
+**`Blank.` / `Add.` / Power** — the Old Lady's trio. `Blank.` is a card with no effects at all; playing one opens the **Add window** (`Combatant.addWindow`), during which every `Add.` card is playable and free. Playing an Add card keeps the window open and bumps `cardsAdded` (which Prunes scales off); playing anything else shuts it, and it never survives the turn. **Power** is applied by the reducer: `DealDamage` carries an optional `self`, and the *first* attack a combatant makes on its turn deals `power` extra (`powerApplied`, re-armed by `ClearTurnCounters`). The charge is not spent by the boost — it decays a point per turn in the start-of-turn cascade instead, unless Explosives says otherwise. Turn 1 runs no upkeep at all, so a combat-start relic (Earring's Power, Calculator's energy) survives into it.
+
+**`Marked`** — the Knight's Markings aren't authored on the card that carries them; another card puts them there (`Mark 2 cards in your hand with sharp 2.`). Each kind maps to one fixed effect scaled by its value — Sharp → damage a random enemy, Sturdy → draw, Flaming → energy, Safe → heal — so there is nothing to compile: `markEffects` in `src/cards/match/marks.ts` turns a copy's `marks` into actions as it is played, and raises `MarkedCardPlayed` per marking so the payoff persistents (Engrave, Etching, Woodworking) can fire.
 
 **Bravery** (the Writer) — `gain N bravery` banks the charge; the reducer boosts the **first block/shield gain of the turn** by the combatant's Bravery (`braveryApplied` re-arms via `ClearTurnCounters`). The charge is not spent by the boost; `Set your bravery to zero.` (Brain Storm) clears it explicitly. The design says "block card"; since the Writer's defensive cards grant Shields, the boost covers both soaks.
 
@@ -161,7 +203,7 @@ A `deal` can scale off the caster's state instead of a fixed number. Two forms, 
 | `Deal 1 damage for each card discarded this turn.` | `{ verb:'deal', amount:1, scale:{ per:'cardsDiscardedThisTurn' } }` | `1 × discards this turn` |
 | `Deal 1 damage for each storm cloud.`     | `{ verb:'deal', amount:1, scale:{ per:'stormClouds' } }` | `1 × storm clouds`  |
 
-Metrics (`ScaleMetric` in `shared`): resources `energy`/`poison`/`block`/`shield`/`defense`/`power`/`bravery`, and counts `clouds`/`uniqueClouds`/`minions`/`cardsDiscardedThisTurn`, and the per-kind cloud counts `lightningClouds`/`stormClouds`/`snowClouds`/`fogClouds` (naming a type in "for each <type> cloud" narrows the count). The last is a per-turn counter on the combatant (`discardedThisTurn`), bumped by real discards only and zeroed by the `ClearTurnCounters` action that the start-of-turn cascade runs beside `ClearBlock` — so a card being *played* into the discard pile never inflates it. `defense` is **block + shield** combined (e.g. Hurl's "Deal damage equal to your defense"). Like Venom/Drink, **scaling resolves in the reducer**: the resolver emits a `DealDamageScaled` action and `metricValue(state, self, per)` computes the amount at apply time (so ordering within a card is respected). Scaling works on `deal`, `gain` and `poison` — the resource verbs emit `GainScaled`, which reads the metric at reduce time exactly as `DealDamageScaled` does. On any other verb it is a diagnostic, not a silent miss. Omitting the per-unit amount (`Poison for each card played this turn.`) reads as one-for-one.
+Metrics (`ScaleMetric` in `shared`): resources `energy`/`poison`/`block`/`shield`/`defense`/`power`/`bravery`/`craft`/`craftBurned`, counts `clouds`/`uniqueClouds`/`minions`/`cardsDiscardedThisTurn`/`cardsPlayedThisTurn`/`minionsDiscarded`/`cardsAdded`/`blankCardsInHand`/`fadingCardsInHand`, and the per-kind cloud counts `lightningClouds`/`stormClouds`/`snowClouds`/`fogClouds` (naming a type in "for each <type> cloud" narrows the count). The last is a per-turn counter on the combatant (`discardedThisTurn`), bumped by real discards only and zeroed by the `ClearTurnCounters` action that the start-of-turn cascade runs beside `ClearBlock` — so a card being *played* into the discard pile never inflates it. `defense` is **block + shield** combined (e.g. Hurl's "Deal damage equal to your defense"). Like Venom/Drink, **scaling resolves in the reducer**: the resolver emits a `DealDamageScaled` action and `metricValue(state, self, per)` computes the amount at apply time (so ordering within a card is respected). Scaling works on `deal`, `gain`, `poison`, `craft` and (only per `power`, for Mend) `heal` — the resource verbs emit `GainScaled`, which reads the metric at reduce time exactly as `DealDamageScaled` does. On any other verb it is a diagnostic, not a silent miss. When a sentence names two resources (`Gain bravery equal to your defense.`), the one being scaled off is always the one *after* `equal`. Omitting the per-unit amount (`Poison for each card played this turn.`) reads as one-for-one.
 
 ## Adding a verb / keyword
 
@@ -177,9 +219,13 @@ The game design (`reference/design.md`) is written in exactly this spirit — ev
 
 - ✅ **Scaling** — `deal damage equal to your <resource>` and `deal N damage for each [unique] cloud/minion`, resolved in the reducer via `DealDamageScaled` + `metricValue`. Still open: scaling on non-`deal` effects (Pile Up's "gain shield for each minion in discard", Vial's "poison for each card played"), "Double your Poison", and metrics that need new counters (cards-played-this-turn, discard-pile contents).
 - ✅ **Triggers, conditions, targeting, modifiers** — persistents authored in English (`src/cards/definitions/*-persistents.ts`), compiled by `src/cards/match/compile-persistent.ts`. Still open: more trigger events (draw, block, gain X), richer conditions, and on-play AoE targeting.
-- ✅ **The Writer's verbs** — `Unplayable.`, `burn`, `find` + the `If you find an unplayable card, …` rider, `set your bravery to zero`, and the Bravery boost. Still open: Blank/Add and Power's first-attack bonus (Old Lady), `play a random card` (Pull From the Hat), peeking (Cheater, Shredder), and next-turn effects (Well Rested).
+- ✅ **The Writer's verbs** — `Fading.`, `craft`, `burn` (as a Craft cost), `set`/`double` on the stored X-values, and the Bravery boost.
+- ✅ **The Old Lady's verbs** — `Blank.`, `Add.`, `lose N HP` / `lose N power`, `put add on …`, and Power's first-attack bonus with its per-turn decay.
+- ✅ **The Knight's Markings** — `mark N cards … with <marking> N`, `remove all markings`, and the `when you play a card marked with …` trigger.
+- ✅ **Next-turn effects** — a `Next turn, …` sentence becomes a `GrantNextTurn` promise the start-of-turn cascade pays out.
+- Still open: `play a random card` (Pull From the Hat), peeking at piles, riders that arm a *future* play ("your next card is played twice", "when you play a card this turn, …"), and creating cards out of nothing (Disguise, Papier Machette).
 
-The design also implies **card attributes** that `CardDef` (currently just `id / name / cost / text`) doesn't carry yet: a **character**, a **type** (Attack / Skill / Persistent), and card **keywords** (Molt, Minion, Unplayable, Blank, Add). For now character is expressed by which definitions file a card lives in and keywords like Venom/Minion are parsed from the text; whether they become structured `CardDef` fields is still an open modeling question.
+The design also implies **card attributes** that `CardDef` (currently just `id / name / cost / text`) doesn't carry yet: a **character**, a **type** (Attack / Skill / Persistent), and card **keywords** (Molt, Minion, Blank, Add, Fading). For now character is expressed by which definitions file a card lives in and keywords like Venom/Minion are parsed from the text; whether they become structured `CardDef` fields is still an open modeling question.
 
 Treat the above as direction, not a spec. Keep the grammar small until real cards demand more.
 
